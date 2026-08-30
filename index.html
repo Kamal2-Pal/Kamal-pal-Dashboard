@@ -170,8 +170,42 @@ function get(r,names){
 
 function unique(a){return [...new Set(a.map(norm).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));}
 function num(v){const n=Number(String(v??"").replace(/,/g,""));return isFinite(n)?n:0;}
-function dateVal(v){if(v===null||v===undefined||v==="")return null;if(typeof v==="number"){const d=XLSX.SSF.parse_date_code(v);return d?new Date(d.y,d.m-1,d.d,d.H||0,d.M||0,d.S||0):null}const s=String(v).trim();let m=s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);if(m)return new Date(+m[1],+m[2]-1,+m[3]);m=s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);if(m)return new Date(+m[3],+m[2]-1,+m[1]);const d=new Date(s);return isNaN(d)?null:d;}
-function dateKey(v){const d=dateVal(v);return d?`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`:"";}
+
+// --- ROBUST DATE PARSER FOR "Order create date" ---
+function dateVal(v){
+  if(v===null||v===undefined||v==="") return null;
+  if(v instanceof Date && !isNaN(v.getTime())) return v;
+  if(typeof v==="number"){
+    const d=XLSX.SSF.parse_date_code(v);
+    return d ? new Date(d.y, d.m-1, d.d, d.H||0, d.M||0, d.S||0) : null;
+  }
+  const s=String(v).trim();
+  if(!s) return null;
+  
+  // Try YYYY-MM-DD or YYYY/MM/DD
+  let m=s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+  if(m) return new Date(+m[1], +m[2]-1, +m[3]);
+  
+  // Try DD-MM-YYYY or DD/MM/YYYY
+  m=s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
+  if(m) return new Date(+m[3], +m[2]-1, +m[1]);
+
+  const d=new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function dateKey(v){
+  const d=dateVal(v);
+  if(d){
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth()+1).padStart(2,"0");
+    const dd = String(d.getDate()).padStart(2,"0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  const s=String(v||"").trim();
+  if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+  return "";
+}
 
 function parseWorkbookBuffer(buf){
   const wb=XLSX.read(buf,{type:"array",cellDates:true});
@@ -202,26 +236,59 @@ function orderLevel(rows){
 }
 
 function fill(id,values,label){const e=$(id),old=e.value,vals=unique(values);e.innerHTML=`<option value="">${label}</option>`+vals.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join("");if(vals.includes(old))e.value=old;}
-function filteredRows(){const w=$("warehouse").value,c=$("channel").value,s=$("status").value,o=$("orderType").value,f=$("fromDate").value,t=$("toDate").value,q=norm($("globalOrderSearch").value).toLowerCase(),m=$("globalMonthFilter").value;return orderLevel(raw).filter(r=>{const od=dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"]));if(w&&norm(get(r,["FulfillmentLocationName","Warehouse","Location"]))!==w)return false;if(c&&norm(get(r,["finance_category","Finance Category","Category"]))!==c)return false;if(s&&norm(get(r,["Status"]))!==s)return false;if(o&&norm(get(r,["Order Type","OrderType"]))!==o)return false;if(f&&od<f)return false;if(t&&od>t)return false;if(m&&od.slice(0,7)!==m)return false;if(q&&!norm(get(r,["Order No","OrderNo","Order Number","Order ID"])).toLowerCase().includes(q))return false;return true});}
+function filteredRows(){const w=$("warehouse").value,c=$("channel").value,s=$("status").value,o=$("orderType").value,f=$("fromDate").value,t=$("toDate").value,q=norm($("globalOrderSearch").value).toLowerCase(),m=$("globalMonthFilter").value;return orderLevel(raw).filter(r=>{const od=dateKey(get(r,["Order create date","OrderDate","Order_Date","Date","order_date"]));if(w&&norm(get(r,["FulfillmentLocationName","Warehouse","Location"]))!==w)return false;if(c&&norm(get(r,["finance_category","Finance Category","Category"]))!==c)return false;if(s&&norm(get(r,["Status"]))!==s)return false;if(o&&norm(get(r,["Order Type","OrderType"]))!==o)return false;if(f&&od<f)return false;if(t&&od>t)return false;if(m&&od.slice(0,7)!==m)return false;if(q&&!norm(get(r,["Order No","OrderNo","Order Number","Order ID"])).toLowerCase().includes(q))return false;return true});}
 function kpi(label,value){return `<div class="kpi"><small>${esc(label)}</small><strong>${Number(value||0).toLocaleString()}</strong></div>`}
 function counts(rows,key){const m={};rows.forEach(r=>{const v=norm(get(r,[key]))||"(Blank)";m[v]=(m[v]||0)+1});return Object.entries(m).sort((a,b)=>b[1]-a[1]);}
 function hbar(id,pairs){const e=$(id);if(!pairs.length){e.innerHTML='<div class="note">No data</div>';return}const mx=Math.max(...pairs.map(x=>x[1]),1);e.innerHTML=pairs.map(([k,v])=>`<div class="hbar"><span>${esc(k)}</span><div class="track"><div class="fill" style="width:${v/mx*100}%"></div></div><b>${v.toLocaleString()}</b></div>`).join("");}
 function miniChart(id,pairs){const e=$(id);if(!pairs.length){e.innerHTML='<div class="note">No data</div>';return}const mx=Math.max(...pairs.map(x=>x[1]),1);e.innerHTML=pairs.map(([k,v])=>`<div class="bar"><em>${v.toLocaleString()}</em><i style="height:${Math.max(3,v/mx*190)}px"></i><span>${esc(k.slice(5))}</span></div>`).join("");}
 
 function populateFilters(){fill("warehouse",orderLevel(raw).map(r=>get(r,["FulfillmentLocationName","Warehouse","Location"])),"All Warehouses");fill("channel",orderLevel(raw).map(r=>get(r,["finance_category","Finance Category","Category"])),"All Finance Categories");fill("status",orderLevel(raw).map(r=>get(r,["Status"])),"All Status");fill("orderType",orderLevel(raw).map(r=>get(r,["Order Type","OrderType"])),"All Order Types");populateMonths();}
-function populateMonths(){const e=$("globalMonthFilter"),old=e.value,months=unique(orderLevel(raw).map(r=>dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"])).slice(0,7)));e.innerHTML='<option value="">All Months</option>'+months.map(m=>`<option value="${m}">${m}</option>`).join("");if(months.includes(old))e.value=old;}
+function populateMonths(){const e=$("globalMonthFilter"),old=e.value,months=unique(orderLevel(raw).map(r=>dateKey(get(r,["Order create date","OrderDate","Order_Date","Date","order_date"])).slice(0,7)));e.innerHTML='<option value="">All Months</option>'+months.map(m=>`<option value="${m}">${m}</option>`).join("");if(months.includes(old))e.value=old;}
 
-function renderOrders(){current=filteredRows();const total=current.length,qty=current.reduce((s,r)=>s+num(get(r,["Order Qty","Qty","Quantity"])),0),picked=current.reduce((s,r)=>s+num(get(r,["Picked Qty"])),0),shipped=current.reduce((s,r)=>s+num(get(r,["Shipped Qty"])),0),open=current.reduce((s,r)=>s+num(get(r,["Open Qty"])),0),cancel=current.filter(r=>norm(get(r,["Status"])).toLowerCase()==="cancelled").length;$("kpis").innerHTML=[["Unique Orders",total],["Total Order Qty",qty],["Picked Qty",picked],["Shipped Qty",shipped],["Open Qty",open],["Cancelled Orders",cancel]].map(x=>kpi(...x)).join("");$("quickSummaryQty").textContent=qty.toLocaleString();$("monthSummaryOrders").textContent=total.toLocaleString();$("monthSummaryText").textContent=$("globalMonthFilter").value?$("globalMonthFilter").value:"All Months";$("searchSummaryCount").textContent=$("globalOrderSearch").value?total.toLocaleString():"0";$("searchSummaryText").textContent=$("globalOrderSearch").value?`Orders matching "${$("globalOrderSearch").value}"`:"Search an Order No.";
-const dates=current.map(r=>dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"]))).filter(Boolean);$("orderCoverage").textContent=dates.length?`Order data coverage: ${Math.min(...dates).toLocaleString()} → ${Math.max(...dates).toLocaleString()} • ${total.toLocaleString()} unique orders`:"Order data coverage: no data";
-const yesterday=new Date();yesterday.setDate(yesterday.getDate()-1);const yk=dateKey(yesterday),yr=orderLevel(raw).filter(r=>dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"]))===yk);$("yesterdayNote").textContent=`Yesterday (${yk}) based on Order create date.`;$("yesterdayCards").innerHTML=[["Unique Orders",yr.length],["Order Qty",yr.reduce((s,r)=>s+num(get(r,["Order Qty","Qty","Quantity"])),0)],["Picked Qty",yr.reduce((s,r)=>s+num(get(r,["Picked Qty"])),0)],["Shipped Qty",yr.reduce((s,r)=>s+num(get(r,["Shipped Qty"])),0)],["Open Qty",yr.reduce((s,r)=>s+num(get(r,["Open Qty"])),0)]].map(x=>kpi(...x)).join("");
-hbar("statusChart",counts(current,"Status"));hbar("warehouseChart",counts(current,"FulfillmentLocationName"));hbar("channelChart",counts(current,"finance_category"));const day={};current.forEach(r=>{const d=dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"]));if(d)day[d]=(day[d]||0)+1});miniChart("dayChart",Object.entries(day).sort().slice(-14));
-const byMonth={};orderLevel(raw).forEach(r=>{const m=dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"])).slice(0,7);if(!m)return;if(!byMonth[m])byMonth[m]={o:0,q:0,p:0,s:0,op:0};byMonth[m].o++;byMonth[m].q+=num(get(r,["Order Qty","Qty","Quantity"]));byMonth[m].p+=num(get(r,["Picked Qty"]));byMonth[m].s+=num(get(r,["Shipped Qty"]));byMonth[m].op+=num(get(r,["Open Qty"]))});$("monthSummaryTbody").innerHTML=Object.entries(byMonth).sort((a,b)=>b[0].localeCompare(a[0])).map(([m,x])=>`<tr><td>${m}</td><td>${x.o.toLocaleString()}</td><td>${x.q.toLocaleString()}</td><td>${x.p.toLocaleString()}</td><td>${x.s.toLocaleString()}</td><td>${x.op.toLocaleString()}</td></tr>`).join("");
-const cols=current.length?Object.keys(current[0]).slice(0,10):["Order No","Order create date","Status","FulfillmentLocationName","finance_category","Order Qty","Picked Qty","Shipped Qty","Open Qty","Actual_ShipDate"];$("thead").innerHTML="<tr>"+cols.map(c=>`<th>${esc(c)}</th>`).join("")+"</tr>";$("tbody").innerHTML=current.slice(0,5000).map(r=>"<tr>"+cols.map(c=>`<td>${esc(get(r,[c]))}</td>`).join("")+"</tr>").join("");$("rowNote").textContent=`Showing ${Math.min(current.length,5000).toLocaleString()} of ${current.length.toLocaleString()} unique orders.`;}
+function renderOrders(){
+  current=filteredRows();
+  const total=current.length,
+        qty=current.reduce((s,r)=>s+num(get(r,["Order Qty","Qty","Quantity"])),0),
+        picked=current.reduce((s,r)=>s+num(get(r,["Picked Qty"])),0),
+        shipped=current.reduce((s,r)=>s+num(get(r,["Shipped Qty"])),0),
+        open=current.reduce((s,r)=>s+num(get(r,["Open Qty"])),0),
+        cancel=current.filter(r=>norm(get(r,["Status"])).toLowerCase()==="cancelled").length;
+  
+  $("kpis").innerHTML=[["Unique Orders",total],["Total Order Qty",qty],["Picked Qty",picked],["Shipped Qty",shipped],["Open Qty",open],["Cancelled Orders",cancel]].map(x=>kpi(...x)).join("");
+  $("quickSummaryQty").textContent=qty.toLocaleString();
+  $("monthSummaryOrders").textContent=total.toLocaleString();
+  $("monthSummaryText").textContent=$("globalMonthFilter").value?$("globalMonthFilter").value:"All Months";
+  $("searchSummaryCount").textContent=$("globalOrderSearch").value?total.toLocaleString():"0";
+  $("searchSummaryText").textContent=$("globalOrderSearch").value?`Orders matching "${$("globalOrderSearch").value}"`:"Search an Order No.";
 
-function buildSlaRows(){const now=new Date();return orderLevel(filteredRows()).map(r=>{const od=dateVal(get(r,["Order create date","OrderDate","Order_Date","Date"])),sd=dateVal(get(r,["Actual_ShipDate","Actual_ShipDate ","Ship_Date","Shipped_Date"])),status=norm(get(r,["Status"])).toLowerCase();if(status==="cancelled")return {...r,_sla:"Cancelled",_hours:null,_due:od?new Date(od.getTime()+48*3600000):null,_slaMilestone:"Cancelled"};if(!od)return {...r,_sla:"No Order Create Date",_hours:null,_due:null,_slaMilestone:""};const due=new Date(od.getTime()+48*3600000),end=sd||now,h=(end-od)/3600000;const st=sd?(h<=48?"Within SLA":"Breached"):(h>48?"Open >48H":(h>=42?"At Risk":"Open <48H"));return {...r,_sla:st,_hours:h,_due:due,_slaMilestone:sd?"Actual_ShipDate":"Open - Actual_ShipDate blank"};});}
-function applySlaFilters(){const base=buildSlaRows(),w=$("slaWarehouse").value,c=$("slaChannel").value,s=$("slaStatus").value,f=$("slaFrom").value,t=$("slaTo").value;const rows=base.filter(r=>{if(w&&norm(get(r,["FulfillmentLocationName","Warehouse","Location"]))!==w)return false;if(c&&norm(get(r,["finance_category","Finance Category","Category"]))!==c)return false;if(s&&r._sla!==s)return false;const d=dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"]));if(f&&d<f)return false;if(t&&d>t)return false;return true});renderSla(rows);}
+  // --- FIXED DATE COVERAGE LOGIC ---
+  const dates=current.map(r=>dateKey(get(r,["Order create date","OrderDate","Order_Date","Date","order_date"]))).filter(Boolean).sort();
+  $("orderCoverage").textContent=dates.length?`Order data coverage: ${dates[0]} → ${dates[dates.length-1]} • ${total.toLocaleString()} unique orders`:"Order data coverage: no data";
+
+  const yesterday=new Date();yesterday.setDate(yesterday.getDate()-1);const yk=dateKey(yesterday),yr=orderLevel(raw).filter(r=>dateKey(get(r,["Order create date","OrderDate","Order_Date","Date","order_date"]))===yk);
+  $("yesterdayNote").textContent=`Yesterday (${yk}) based on Order create date.`;
+  $("yesterdayCards").innerHTML=[["Unique Orders",yr.length],["Order Qty",yr.reduce((s,r)=>s+num(get(r,["Order Qty","Qty","Quantity"])),0)],["Picked Qty",yr.reduce((s,r)=>s+num(get(r,["Picked Qty"])),0)],["Shipped Qty",yr.reduce((s,r)=>s+num(get(r,["Shipped Qty"])),0)],["Open Qty",yr.reduce((s,r)=>s+num(get(r,["Open Qty"])),0)]].map(x=>kpi(...x)).join("");
+
+  hbar("statusChart",counts(current,"Status"));
+  hbar("warehouseChart",counts(current,"FulfillmentLocationName"));
+  hbar("channelChart",counts(current,"finance_category"));
+  
+  const day={};current.forEach(r=>{const d=dateKey(get(r,["Order create date","OrderDate","Order_Date","Date","order_date"]));if(d)day[d]=(day[d]||0)+1});
+  miniChart("dayChart",Object.entries(day).sort().slice(-14));
+
+  const byMonth={};orderLevel(raw).forEach(r=>{const m=dateKey(get(r,["Order create date","OrderDate","Order_Date","Date","order_date"])).slice(0,7);if(!m)return;if(!byMonth[m])byMonth[m]={o:0,q:0,p:0,s:0,op:0};byMonth[m].o++;byMonth[m].q+=num(get(r,["Order Qty","Qty","Quantity"]));byMonth[m].p+=num(get(r,["Picked Qty"]));byMonth[m].s+=num(get(r,["Shipped Qty"]));byMonth[m].op+=num(get(r,["Open Qty"]))});
+  $("monthSummaryTbody").innerHTML=Object.entries(byMonth).sort((a,b)=>b[0].localeCompare(a[0])).map(([m,x])=>`<tr><td>${m}</td><td>${x.o.toLocaleString()}</td><td>${x.q.toLocaleString()}</td><td>${x.p.toLocaleString()}</td><td>${x.s.toLocaleString()}</td><td>${x.op.toLocaleString()}</td></tr>`).join("");
+
+  const cols=current.length?Object.keys(current[0]).slice(0,10):["Order No","Order create date","Status","FulfillmentLocationName","finance_category","Order Qty","Picked Qty","Shipped Qty","Open Qty","Actual_ShipDate"];
+  $("thead").innerHTML="<tr>"+cols.map(c=>`<th>${esc(c)}</th>`).join("")+"</tr>";
+  $("tbody").innerHTML=current.slice(0,5000).map(r=>"<tr>"+cols.map(c=>`<td>${esc(get(r,[c]))}</td>`).join("")+"</tr>").join("");
+  $("rowNote").textContent=`Showing ${Math.min(current.length,5000).toLocaleString()} of ${current.length.toLocaleString()} unique orders.`;
+}
+
+function buildSlaRows(){const now=new Date();return orderLevel(filteredRows()).map(r=>{const od=dateVal(get(r,["Order create date","OrderDate","Order_Date","Date","order_date"])),sd=dateVal(get(r,["Actual_ShipDate","Actual_ShipDate ","Ship_Date","Shipped_Date"])),status=norm(get(r,["Status"])).toLowerCase();if(status==="cancelled")return {...r,_sla:"Cancelled",_hours:null,_due:od?new Date(od.getTime()+48*3600000):null,_slaMilestone:"Cancelled"};if(!od)return {...r,_sla:"No Order Create Date",_hours:null,_due:null,_slaMilestone:""};const due=new Date(od.getTime()+48*3600000),end=sd||now,h=(end-od)/3600000;const st=sd?(h<=48?"Within SLA":"Breached"):(h>48?"Open >48H":(h>=42?"At Risk":"Open <48H"));return {...r,_sla:st,_hours:h,_due:due,_slaMilestone:sd?"Actual_ShipDate":"Open - Actual_ShipDate blank"};});}
+function applySlaFilters(){const base=buildSlaRows(),w=$("slaWarehouse").value,c=$("slaChannel").value,s=$("slaStatus").value,f=$("slaFrom").value,t=$("slaTo").value;const rows=base.filter(r=>{if(w&&norm(get(r,["FulfillmentLocationName","Warehouse","Location"]))!==w)return false;if(c&&norm(get(r,["finance_category","Finance Category","Category"]))!==c)return false;if(s&&r._sla!==s)return false;const d=dateKey(get(r,["Order create date","OrderDate","Order_Date","Date","order_date"]));if(f&&d<f)return false;if(t&&d>t)return false;return true});renderSla(rows);}
 function initSlaFilters(){const rows=buildSlaRows();fill("slaWarehouse",rows.map(r=>get(r,["FulfillmentLocationName","Warehouse","Location"])),"All Warehouses");fill("slaChannel",rows.map(r=>get(r,["finance_category","Finance Category","Category"])),"All Finance Categories");fill("slaStatus",rows.map(r=>r._sla),"All SLA Status");}
-function renderSla(rows){const total=rows.length,within=rows.filter(r=>r._sla==="Within SLA").length,breach=rows.filter(r=>r._sla==="Breached").length,risk=rows.filter(r=>r._sla==="At Risk").length,open48=rows.filter(r=>r._sla==="Open >48H").length,openUnder=rows.filter(r=>r._sla==="Open <48H").length,measured=within+breach,pct=measured?within/measured*100:0;$("slaKpis").innerHTML=[["Unique Orders",total],["Within SLA",within],["Breached",breach],["At Risk",risk],["Open >48H",open48],["SLA %",pct.toFixed(1)+"%"]].map(x=>`<div class="kpi"><small>${x[0]}</small><strong>${x[1]}</strong></div>`).join("");hbar("slaStatusChart",counts(rows,"_sla"));hbar("slaWarehouseChart",counts(rows,"FulfillmentLocationName"));const daily={};rows.forEach(r=>{const d=dateKey(get(r,["Order create date","OrderDate","Order_Date","Date"]));if(d){if(!daily[d])daily[d]={ok:0,total:0};daily[d].total++;if(r._sla==="Within SLA")daily[d].ok++}});miniChart("slaDayChart",Object.entries(daily).sort().slice(-14).map(([d,x])=>[d,x.total?x.ok/x.total*100:0]));const br=rows.filter(r=>r._sla==="Breached"),remarks={};br.forEach(r=>{const x=norm(get(r,["WH remarks","WH Remarks","WH remarks ","Remarks"]))||"Blank / No Remarks";remarks[x]=(remarks[x]||0)+1});$("slaRemarksTbody").innerHTML=Object.entries(remarks).sort((a,b)=>b[1]-a[1]).map(([x,v])=>`<tr><td>${esc(x)}</td><td>${v.toLocaleString()}</td><td>${breach?(v/breach*100).toFixed(1):"0.0"}%</td></tr>`).join("")||"<tr><td colspan=3>No breached orders.</td></tr>";const open=rows.filter(r=>r._sla==="Open >48H").sort((a,b)=>(b._hours||0)-(a._hours||0));$("slaOpen48RemarksTbody").innerHTML=open.map(r=>`<tr><td>${esc(get(r,["Order No","OrderNo","Order ID"]))}</td><td>${esc(get(r,["FulfillmentLocationName","Warehouse","Location"]))}</td><td>${esc(get(r,["Order create date","OrderDate","Date"]))}</td><td>${r._hours.toFixed(1)}</td><td>${esc(norm(get(r,["WH remarks","WH Remarks","WH remarks ","Remarks"]))||"Blank / No Remarks")}</td></tr>`).join("")||"<tr><td colspan=5>No open orders above 48 hours.</td></tr>";const cols=["Order No","Order create date","Status","FulfillmentLocationName","finance_category","Order Qty","Manifest Create Date","Actual_ShipDate"];$("slaThead").innerHTML="<tr>"+cols.map(c=>`<th>${esc(c)}</th>`).join("")+"<th>SLA Status</th><th>Hours Taken</th><th>SLA Due</th><th>Milestone Used</th></tr>";$("slaTbody").innerHTML=rows.map(r=>{const cls=r._sla==="Within SLA"?"good":r._sla==="Breached"?"bad":r._sla==="At Risk"?"risk":"";return "<tr>"+cols.map(c=>`<td>${esc(get(r,[c]))}</td>`).join("")+`<td class="${cls}">${esc(r._sla)}</td><td>${r._hours==null?"":r._hours.toFixed(1)}</td><td>${r._due?r._due.toLocaleString():""}</td><td>${esc(r._slaMilestone)}</td></tr>`}).join("");$("slaNote").textContent=`${total.toLocaleString()} unique orders • SLA = Order create date → Actual_ShipDate • target 48 hours.`;}
+function renderSla(rows){const total=rows.length,within=rows.filter(r=>r._sla==="Within SLA").length,breach=rows.filter(r=>r._sla==="Breached").length,risk=rows.filter(r=>r._sla==="At Risk").length,open48=rows.filter(r=>r._sla==="Open >48H").length,openUnder=rows.filter(r=>r._sla==="Open <48H").length,measured=within+breach,pct=measured?within/measured*100:0;$("slaKpis").innerHTML=[["Unique Orders",total],["Within SLA",within],["Breached",breach],["At Risk",risk],["Open >48H",open48],["SLA %",pct.toFixed(1)+"%"]].map(x=>`<div class="kpi"><small>${x[0]}</small><strong>${x[1]}</strong></div>`).join("");hbar("slaStatusChart",counts(rows,"_sla"));hbar("slaWarehouseChart",counts(rows,"FulfillmentLocationName"));const daily={};rows.forEach(r=>{const d=dateKey(get(r,["Order create date","OrderDate","Order_Date","Date","order_date"]));if(d){if(!daily[d])daily[d]={ok:0,total:0};daily[d].total++;if(r._sla==="Within SLA")daily[d].ok++}});miniChart("slaDayChart",Object.entries(daily).sort().slice(-14).map(([d,x])=>[d,x.total?x.ok/x.total*100:0]));const br=rows.filter(r=>r._sla==="Breached"),remarks={};br.forEach(r=>{const x=norm(get(r,["WH remarks","WH Remarks","WH remarks ","Remarks"]))||"Blank / No Remarks";remarks[x]=(remarks[x]||0)+1});$("slaRemarksTbody").innerHTML=Object.entries(remarks).sort((a,b)=>b[1]-a[1]).map(([x,v])=>`<tr><td>${esc(x)}</td><td>${v.toLocaleString()}</td><td>${breach?(v/breach*100).toFixed(1):"0.0"}%</td></tr>`).join("")||"<tr><td colspan=3>No breached orders.</td></tr>";const open=rows.filter(r=>r._sla==="Open >48H").sort((a,b)=>(b._hours||0)-(a._hours||0));$("slaOpen48RemarksTbody").innerHTML=open.map(r=>`<tr><td>${esc(get(r,["Order No","OrderNo","Order ID"]))}</td><td>${esc(get(r,["FulfillmentLocationName","Warehouse","Location"]))}</td><td>${esc(get(r,["Order create date","OrderDate","Date","order_date"]))}</td><td>${r._hours.toFixed(1)}</td><td>${esc(norm(get(r,["WH remarks","WH Remarks","WH remarks ","Remarks"]))||"Blank / No Remarks")}</td></tr>`).join("")||"<tr><td colspan=5>No open orders above 48 hours.</td></tr>";const cols=["Order No","Order create date","Status","FulfillmentLocationName","finance_category","Order Qty","Manifest Create Date","Actual_ShipDate"];$("slaThead").innerHTML="<tr>"+cols.map(c=>`<th>${esc(c)}</th>`).join("")+"<th>SLA Status</th><th>Hours Taken</th><th>SLA Due</th><th>Milestone Used</th></tr>";$("slaTbody").innerHTML=rows.map(r=>{const cls=r._sla==="Within SLA"?"good":r._sla==="Breached"?"bad":r._sla==="At Risk"?"risk":"";return "<tr>"+cols.map(c=>`<td>${esc(get(r,[c]))}</td>`).join("")+`<td class="${cls}">${esc(r._sla)}</td><td>${r._hours==null?"":r._hours.toFixed(1)}</td><td>${r._due?r._due.toLocaleString():""}</td><td>${esc(r._slaMilestone)}</td></tr>`}).join("");$("slaNote").textContent=`${total.toLocaleString()} unique orders • SLA = Order create date → Actual_ShipDate • target 48 hours.`;}
 
 function clearFilters(){["warehouse","channel","status","orderType","fromDate","toDate"].forEach(id=>$(id).value="");populateFilters();renderOrders();initSlaFilters();applySlaFilters();}
 function clearSlaFilters(){["slaWarehouse","slaChannel","slaStatus","slaFrom","slaTo"].forEach(id=>$(id).value="");initSlaFilters();applySlaFilters();}
