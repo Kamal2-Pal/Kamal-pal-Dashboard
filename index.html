@@ -57,7 +57,6 @@ th{background:#0f172a;position:sticky;top:0;z-index:1;color:#94a3b8}
     <div>
       <h1>PW - Order Dashboard V2</h1>
       <div class="status-bar">
-        <div class="status-badge">📥 Report Generated: <b id="lbl-report-time">Loading...</b></div>
         <div class="status-badge">🚀 Last GitHub Sync: <b id="lbl-sync-time">Loading...</b></div>
         <div class="status-badge">📊 Total Rows: <b id="lbl-rows">0</b></div>
       </div>
@@ -147,7 +146,6 @@ async function loadSyncInfo() {
     const res = await fetch('sync_info.json?t=' + Date.now());
     if(res.ok) {
       const data = await res.json();
-      $('lbl-report-time').innerText = data.report_generated_at || 'N/A';
       $('lbl-sync-time').innerText = data.last_sync_at || 'N/A';
       $('lbl-rows').innerText = (data.total_rows || 0).toLocaleString();
     }
@@ -171,7 +169,6 @@ function get(r,names){
 function unique(a){return [...new Set(a.map(norm).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));}
 function num(v){const n=Number(String(v??"").replace(/,/g,""));return isFinite(n)?n:0;}
 
-// --- ROBUST DATE PARSER FOR "Order create date" ---
 function dateVal(v){
   if(v===null||v===undefined||v==="") return null;
   if(v instanceof Date && !isNaN(v.getTime())) return v;
@@ -182,11 +179,9 @@ function dateVal(v){
   const s=String(v).trim();
   if(!s) return null;
   
-  // Try YYYY-MM-DD or YYYY/MM/DD
   let m=s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
   if(m) return new Date(+m[1], +m[2]-1, +m[3]);
   
-  // Try DD-MM-YYYY or DD/MM/YYYY
   m=s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
   if(m) return new Date(+m[3], +m[2]-1, +m[1]);
 
@@ -261,7 +256,6 @@ function renderOrders(){
   $("searchSummaryCount").textContent=$("globalOrderSearch").value?total.toLocaleString():"0";
   $("searchSummaryText").textContent=$("globalOrderSearch").value?`Orders matching "${$("globalOrderSearch").value}"`:"Search an Order No.";
 
-  // --- FIXED DATE COVERAGE LOGIC ---
   const dates=current.map(r=>dateKey(get(r,["Order create date","OrderDate","Order_Date","Date","order_date"]))).filter(Boolean).sort();
   $("orderCoverage").textContent=dates.length?`Order data coverage: ${dates[0]} → ${dates[dates.length-1]} • ${total.toLocaleString()} unique orders`:"Order data coverage: no data";
 
