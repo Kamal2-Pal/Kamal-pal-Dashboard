@@ -162,6 +162,10 @@ const SUPABASE_URL = "https://nfacejugcsbmljqqswpy.supabase.co";
 const SUPABASE_KEY = "sb_publishable_nH2Bmsb9gm29Txb9-5pynw_-vzcFSHX";
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// GitHub Repository Configuration for Auto-Update Commit Message
+const GITHUB_REPO_OWNER = "Kamal2-Pal";
+const GITHUB_REPO_NAME = "Kamal-pal-Dashboard";
+
 // Check Active Session on Page Load
 window.addEventListener('DOMContentLoaded', async () => {
   const { data: { session } } = await _supabase.auth.getSession();
@@ -484,13 +488,32 @@ async function loadCentralExcel(){
     renderOrders();
     initSlaFilters();
     applySlaFilters();
-    $("sourceText").textContent=`LIVE Vinculum Order report • ${raw.length.toLocaleString()} report rows • data.xlsx • Loaded ${new Date().toLocaleString()}`;
+
+    // Fetch Last Commit Time from GitHub API
+    fetchGitHubCommitTime();
   }catch(e){
     $("sourceText").textContent="LIVE Order report unavailable — use Upload Vinculum Excel";
     raw=[];
     populateFilters();
     renderOrders();
   }
+}
+
+async function fetchGitHubCommitTime() {
+  try {
+    const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/commits?path=data.xlsx&page=1&per_page=1`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.length > 0) {
+        const commitMsg = data[0].commit.message;
+        $("sourceText").textContent = `LIVE Vinculum Order report • ${raw.length.toLocaleString()} report rows • data.xlsx • ${commitMsg}`;
+        return;
+      }
+    }
+  } catch (err) {
+    console.warn("GitHub commit fetch failed, fallback to local date", err);
+  }
+  $("sourceText").textContent = `LIVE Vinculum Order report • ${raw.length.toLocaleString()} report rows • data.xlsx • Loaded ${new Date().toLocaleString()}`;
 }
 </script>
 </body>
