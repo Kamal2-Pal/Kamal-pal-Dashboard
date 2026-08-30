@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PW - Order Dashboard V2</title>
+<!-- Supabase JS Client & XLSX Library -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
@@ -63,6 +64,7 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
 </head>
 <body>
 
+<!-- Login Modal -->
 <div id="loginOverlay">
   <div class="login-card">
     <div class="logo">V</div>
@@ -281,7 +283,33 @@ document.querySelectorAll(".tab").forEach(btn=>btn.addEventListener("click",()=>
 ["slaWarehouse","slaChannel","slaStatus","slaFrom","slaTo"].forEach(id=>$(id).addEventListener("change",applySlaFilters));
 $("globalOrderSearch").addEventListener("input",()=>{renderOrders();if($("slaTab").classList.contains("active-panel"))applySlaFilters();});
 $("file").addEventListener("change",async e=>{const f=e.target.files[0];if(!f)return;try{raw=parseWorkbookBuffer(await f.arrayBuffer());if(!raw.length)throw Error("Excel is empty or no valid rows found");populateFilters();renderOrders();initSlaFilters();applySlaFilters();$("sourceText").textContent=`Live upload • ${raw.length.toLocaleString()} report rows • ${f.name} • ${new Date().toLocaleString()}`;}catch(err){alert("File read nahi ho payi: "+err.message)}e.target.value=""});
-async function loadCentralExcel(){try{const r=await fetch("data.xlsx?ts="+Date.now(),{cache:"no-store"});if(!r.ok)throw Error("data.xlsx not found");raw=parseWorkbookBuffer(await r.arrayBuffer());if(!raw.length)throw Error("No order data found");populateFilters();renderOrders();initSlaFilters();applySlaFilters();$("sourceText").textContent=`LIVE Vinculum Order report • ${raw.length.toLocaleString()} report rows • data.xlsx • Loaded ${new Date().toLocaleString()}`;}catch(e){$("sourceText").textContent="LIVE Order report unavailable — use Upload Vinculum Excel";raw=[];populateFilters();renderOrders();}}
+
+// GitHub Script / Data update time fetch Function
+async function loadCentralExcel(){
+  try {
+    const r = await fetch("data.xlsx?ts=" + Date.now(), { cache: "no-store" });
+    if (!r.ok) throw Error("data.xlsx not found");
+    
+    // GitHub par file jab save / update hui wahi exact timestamp
+    const lastModifiedHeader = r.headers.get("Last-Modified");
+    const fileUpdatedTime = lastModifiedHeader ? new Date(lastModifiedHeader).toLocaleString() : "Unknown";
+
+    raw = parseWorkbookBuffer(await r.arrayBuffer());
+    if (!raw.length) throw Error("No order data found");
+
+    populateFilters();
+    renderOrders();
+    initSlaFilters();
+    applySlaFilters();
+
+    $("sourceText").textContent = `LIVE Vinculum Order report • ${raw.length.toLocaleString()} report rows • data.xlsx • Last Updated: ${fileUpdatedTime}`;
+  } catch(e) {
+    $("sourceText").textContent = "LIVE Order report unavailable — use Upload Vinculum Excel";
+    raw = [];
+    populateFilters();
+    renderOrders();
+  }
+}
 </script>
 </body>
 </html>
