@@ -14,7 +14,7 @@
         .logo { background: #f97316; color: white; font-weight: bold; padding: 8px 14px; border-radius: 8px; font-size: 20px; }
         .title-area h1 { font-size: 20px; color: #ffffff; }
         
-        .status-bar { display: flex; gap: 15px; font-size: 12px; margin-top: 6px; flex-wrap: wrap; }
+        .status-bar { display: flex; gap: 10px; font-size: 12px; margin-top: 6px; flex-wrap: wrap; }
         .status-badge { background: #334155; padding: 5px 12px; border-radius: 6px; color: #94a3b8; }
         .status-badge b { color: #38bdf8; }
 
@@ -22,10 +22,15 @@
         .btn-refresh { background: #475569; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; }
         .btn-refresh:hover { background: #334155; }
 
-        .cards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .cards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 25px; }
         .card { background: #1e293b; padding: 15px; border-radius: 10px; border: 1px solid #334155; }
         .card-title { font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: bold; margin-bottom: 8px; }
         .card-value { font-size: 24px; font-weight: bold; color: #f8fafc; }
+
+        .section-box { background: #1e293b; padding: 20px; border-radius: 10px; border: 1px solid #334155; margin-bottom: 25px; }
+        .section-header { margin-bottom: 15px; }
+        .section-header h2 { font-size: 18px; color: #ffffff; }
+        .section-header p { font-size: 12px; color: #94a3b8; margin-top: 4px; }
     </style>
 </head>
 <body>
@@ -47,7 +52,7 @@
         </div>
     </div>
 
-    <!-- Summary Cards -->
+    <!-- Main Summary Cards -->
     <div class="cards-grid">
         <div class="card">
             <div class="card-title">Unique Orders</div>
@@ -75,6 +80,36 @@
         </div>
     </div>
 
+    <!-- Yesterday Summary Section -->
+    <div class="section-box">
+        <div class="section-header">
+            <h2>Yesterday Summary</h2>
+            <p id="yesterday-date-lbl">Based on Order create date.</p>
+        </div>
+        <div class="cards-grid" style="margin-bottom: 0;">
+            <div class="card">
+                <div class="card-title">Unique Orders</div>
+                <div class="card-value" id="yest-unique">0</div>
+            </div>
+            <div class="card">
+                <div class="card-title">Order Qty</div>
+                <div class="card-value" id="yest-qty">0</div>
+            </div>
+            <div class="card">
+                <div class="card-title">Picked Qty</div>
+                <div class="card-value" id="yest-picked">0</div>
+            </div>
+            <div class="card">
+                <div class="card-title">Shipped Qty</div>
+                <div class="card-value" id="yest-shipped">0</div>
+            </div>
+            <div class="card">
+                <div class="card-title">Open Qty</div>
+                <div class="card-value" id="yest-open">0</div>
+            </div>
+        </div>
+    </div>
+
     <script>
         async function loadSyncInfo() {
             try {
@@ -84,11 +119,9 @@
                     document.getElementById('lbl-report-time').innerText = data.report_generated_at || 'N/A';
                     document.getElementById('lbl-sync-time').innerText = data.last_sync_at || 'N/A';
                     document.getElementById('lbl-rows').innerText = (data.total_rows || 0).toLocaleString();
-                } else {
-                    document.getElementById('lbl-sync-time').innerText = 'Manual Upload';
                 }
             } catch (e) {
-                document.getElementById('lbl-sync-time').innerText = 'Local Data';
+                console.error(e);
             }
         }
 
@@ -114,6 +147,14 @@
             let uniqueOrders = new Set();
             let totalQty = 0, pickedQty = 0, shippedQty = 0, openQty = 0, cancelledOrders = 0;
 
+            // Yesterday Date Calculation
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            const yestStr = yesterday.toISOString().split('T')[0];
+            document.getElementById('yesterday-date-lbl').innerText = `Yesterday (${yestStr}) based on Order create date.`;
+
+            let yestOrders = new Set(), yestQty = 0, yestPicked = 0, yestShipped = 0, yestOpen = 0;
+
             rows.forEach(r => {
                 const orderNo = r['Order No'] || r['OrderNo'] || r['ORDER_NO'];
                 if(orderNo) uniqueOrders.add(orderNo);
@@ -126,14 +167,32 @@
                 else if(status.includes('ship')) shippedQty += qty;
                 else if(status.includes('open') || status.includes('pending')) openQty += qty;
                 else if(status.includes('cancel')) cancelledOrders += 1;
+
+                // Yesterday calculations
+                const orderDate = String(r['Order Date'] || r['OrderDate'] || r['ORDER_DATE'] || '');
+                if(orderDate.includes(yestStr)) {
+                    if(orderNo) yestOrders.add(orderNo);
+                    yestQty += qty;
+                    if(status.includes('pick')) yestPicked += qty;
+                    else if(status.includes('ship')) yestShipped += qty;
+                    else if(status.includes('open') || status.includes('pending')) yestOpen += qty;
+                }
             });
 
+            // Overall Summary
             document.getElementById('val-unique-orders').innerText = uniqueOrders.size.toLocaleString();
             document.getElementById('val-total-qty').innerText = totalQty.toLocaleString();
             document.getElementById('val-picked-qty').innerText = pickedQty.toLocaleString();
             document.getElementById('val-shipped-qty').innerText = shippedQty.toLocaleString();
             document.getElementById('val-open-qty').innerText = openQty.toLocaleString();
             document.getElementById('val-cancelled').innerText = cancelledOrders.toLocaleString();
+
+            // Yesterday Summary
+            document.getElementById('yest-unique').innerText = yestOrders.size.toLocaleString();
+            document.getElementById('yest-qty').innerText = yestQty.toLocaleString();
+            document.getElementById('yest-picked').innerText = yestPicked.toLocaleString();
+            document.getElementById('yest-shipped').innerText = yestShipped.toLocaleString();
+            document.getElementById('yest-open').innerText = yestOpen.toLocaleString();
         }
 
         window.onload = loadDashboardData;
