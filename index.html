@@ -159,10 +159,10 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
 const GITHUB_REPO_OWNER = "Kamal2-Pal";
 const GITHUB_REPO_NAME = "Kamal-pal-Dashboard";
 
-// Updated Published Google Sheet CSV Link with tab ID 833925312
+// Published Google Sheet CSV Link
 const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR-CEeJBC89FWgtZHrFqn6shfhF614KWBSx6dJFlrDn3CNpHw4QubHRzpjquqRFnc4TKdYDoI0zQSwK/pub?gid=833925312&single=true&output=csv";
 
-let googleSheetRemarksMap = {}; // { orderId: { openRemark, breachRemark } }
+let googleSheetRemarksMap = {}; // { ORDERNO: { openRemark, breachRemark } }
 
 // Email Authentication Logic
 window.addEventListener('DOMContentLoaded', () => {
@@ -294,39 +294,42 @@ async function fetchGoogleSheetData() {
   try {
     const url = GOOGLE_SHEET_CSV_URL + '&t=' + Date.now();
     const response = await fetch(url);
-    if(!response.ok) return;
+    if (!response.ok) {
+      console.warn("Google Sheet HTTP status error:", response.status);
+      return;
+    }
     const csvText = await response.text();
     
     Papa.parse(csvText, {
-      header: true,
+      header: false,
       skipEmptyLines: true,
       complete: function(results) {
         googleSheetRemarksMap = {};
-        results.data.forEach(row => {
-          const keys = Object.keys(row);
-          if (keys.length === 0) return;
+        const rows = results.data;
+        if (!rows || rows.length < 2) {
+          console.warn("Sheet empty ya header missing hai!");
+          return;
+        }
 
-          let orderId = "", openRemark = "", breachRemark = "";
-          
-          keys.forEach(k => {
-            const cleanKey = k.trim().toLowerCase();
-            if (cleanKey.includes("order")) orderId = norm(row[k]);
-            if (cleanKey.includes("open")) openRemark = norm(row[k]);
-            if (cleanKey.includes("breach") || cleanKey.includes("tat")) breachRemark = norm(row[k]);
-          });
+        // Column A (Index 0): Order no | Column B (Index 1): Open Order remarks | Column C (Index 2): TAT Breach Remarks
+        for (let i = 1; i < rows.length; i++) {
+          const row = rows[i];
+          if (!row || row.length === 0) continue;
 
-          // Fallback to Column positions (Col A, Col B, Col C)
-          if (!orderId && keys[0]) orderId = norm(row[keys[0]]);
-          if (!openRemark && keys[1]) openRemark = norm(row[keys[1]]);
-          if (!breachRemark && keys[2]) breachRemark = norm(row[keys[2]]);
+          const rawOrderId = String(row[0] || "").trim().toUpperCase();
+          const openRemark = String(row[1] || "").trim();
+          const breachRemark = String(row[2] || "").trim();
 
-          if (orderId) {
-            googleSheetRemarksMap[orderId] = {
+          if (rawOrderId) {
+            googleSheetRemarksMap[rawOrderId] = {
               openRemark: openRemark,
               breachRemark: breachRemark
             };
           }
-        });
+        }
+
+        console.log("Sheet Connected Successfully! Total Loaded Orders:", Object.keys(googleSheetRemarksMap).length);
+        console.log("Sample Data Map:", googleSheetRemarksMap);
 
         if ($("slaTab") && $("slaTab").classList.contains("active-panel")) {
           applySlaFilters();
@@ -334,26 +337,21 @@ async function fetchGoogleSheetData() {
       }
     });
   } catch (err) {
-    console.warn("Google Sheet sync error:", err);
+    console.warn("Google Sheet fetch error:", err);
   }
 }
 
 function getEffectiveRemark(r, type = "general") {
-  const orderId = norm(get(r, ["Order No","OrderNo","Order Number","Order_No","Order_Number","Order ID","OrderID"]));
+  const orderId = String(get(r, ["Order No", "OrderNo", "Order Number", "Order_No", "Order ID", "OrderID"]) || "").trim().toUpperCase();
   
   if (googleSheetRemarksMap[orderId]) {
-    if (type === "open" && googleSheetRemarksMap[orderId].openRemark) {
-      return googleSheetRemarksMap[orderId].openRemark;
-    }
-    if (type === "breach" && googleSheetRemarksMap[orderId].breachRemark) {
-      return googleSheetRemarksMap[orderId].breachRemark;
-    }
-    if (googleSheetRemarksMap[orderId].openRemark || googleSheetRemarksMap[orderId].breachRemark) {
-      return googleSheetRemarksMap[orderId].openRemark || googleSheetRemarksMap[orderId].breachRemark;
-    }
+    const entry = googleSheetRemarksMap[orderId];
+    if (type === "open" && entry.openRemark) return entry.openRemark;
+    if (type === "breach" && entry.breachRemark) return entry.breachRemark;
+    if (entry.openRemark || entry.breachRemark) return entry.openRemark || entry.breachRemark;
   }
 
-  return norm(get(r, ["WH remarks","WH Remarks","WH remarks ","Remarks"]));
+  return norm(get(r, ["WH remarks", "WH Remarks", "WH remarks ", "Remarks"]));
 }
 
 function fill(id,values,label){
