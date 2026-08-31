@@ -439,7 +439,7 @@ function renderSla(rows){
 
   const cols=["Order No","Order create date","Status","FulfillmentLocationName","finance_category","Order Qty","Manifest Create Date","Actual_ShipDate"];
   $("slaThead").innerHTML="<tr>"+cols.map(c=>`<th>${esc(c)}</th>`).join("")+"<th>SLA Status</th><th>Hours Taken</th><th>SLA Due</th><th>Milestone Used</th></tr>";
-  $("slaTbody").innerHTML=rows.map(r=>{
+  $("slaTbody").innerHTML=rows.slice(0, 5000).map(r=>{
     const cls=r._sla==="Within SLA"?"good":r._sla==="Breached"?"bad":r._sla==="At Risk"?"risk":"";
     return "<tr>"+cols.map(c=>`<td>${esc(get(r,[c]))}</td>`).join("")+`<td class="${cls}">${esc(r._sla)}</td><td>${r._hours==null?"":r._hours.toFixed(1)}</td><td>${r._due?r._due.toLocaleString():""}</td><td>${esc(r._slaMilestone)}</td></tr>`;
   }).join("");
@@ -480,17 +480,34 @@ $("file").addEventListener("change",async e=>{
 
 async function loadCentralExcel(){
   try{
+    $("sourceText").textContent = "Loading LIVE Vinculum Order report… Please wait…";
+    await new Promise(r => setTimeout(r, 50));
+
     const r=await fetch("data.xlsx?ts="+Date.now(),{cache:"no-store"});
     if(!r.ok)throw Error("data.xlsx not found");
-    raw=parseWorkbookBuffer(await r.arrayBuffer());
-    if(!raw.length)throw Error("No order data found");
-    populateFilters();
-    renderOrders();
-    initSlaFilters();
-    applySlaFilters();
+    const buffer = await r.arrayBuffer();
 
-    // Fetch Last Commit Time from GitHub API
-    fetchGitHubCommitTime();
+    setTimeout(() => {
+      raw = parseWorkbookBuffer(buffer);
+      if(!raw.length) {
+        $("sourceText").textContent = "No order data found in file.";
+        return;
+      }
+
+      setTimeout(() => {
+        populateFilters();
+        renderOrders();
+        
+        setTimeout(() => {
+          initSlaFilters();
+          applySlaFilters();
+          fetchGitHubCommitTime();
+        }, 50);
+
+      }, 50);
+
+    }, 50);
+
   }catch(e){
     $("sourceText").textContent="LIVE Order report unavailable — use Upload Vinculum Excel";
     raw=[];
