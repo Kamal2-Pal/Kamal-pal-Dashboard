@@ -77,13 +77,13 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
 </div>
 
 <header class="header">
-  <div class="title"><div class="logo">V</div><div><h1>PW - Order Dashboard V2</h1><div class="sub" id="sourceText">Loading LIVE Vinculum Order report…</div></div></div>
+  <div class="title"><div class="logo">V</div><div><h1>PW - Order Dashboard V2</h1><div class="sub" id="sourceText">Loading LIVE Vinculum & History Order reports…</div></div></div>
   <div class="header-tools">
     <div class="header-search">⌕ <input id="globalOrderSearch" placeholder="Search Order No…" aria-label="Search Order No"></div>
     <div class="header-month"><label>MONTH</label><select id="globalMonthFilter"><option value="">All Months</option></select></div>
     <div class="actions">
-      <label class="upload-label primary" for="file">＋ Upload Current Vinculum Excel</label>
-      <button onclick="loadCentralExcel()">↻ Refresh</button>
+      <label class="upload-label primary" for="file">＋ Manual Excel Upload</label>
+      <button onclick="loadAllExcelData()">↻ Refresh</button>
       <button onclick="handleLogout()" style="background:#c52f2f;color:#fff;border:none">Logout</button>
     </div>
   </div>
@@ -167,7 +167,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   const { data: { session } } = await _supabase.auth.getSession();
   if (session) {
     document.getElementById('loginOverlay').style.display = 'none';
-    loadCentralExcel();
+    loadAllExcelData();
   }
 });
 
@@ -190,7 +190,7 @@ async function handleLogin() {
     errorDiv.textContent = error.message;
   } else {
     document.getElementById('loginOverlay').style.display = 'none';
-    loadCentralExcel();
+    loadAllExcelData();
   }
 }
 
@@ -272,18 +272,17 @@ function orderLevel(rows){
   return map.size > 0 ? [...map.values()] : rows;
 }
 
-// FAST AUTO MERGE LOGIC (Current + Archived Historical Data)
-function mergeAndDeduplicate(existingRows, newUploadedRows) {
+function mergeAndDeduplicate(historyRows, currentRows) {
   const map = new Map();
 
-  // Load existing base data
-  existingRows.forEach(row => {
+  // 1. First add history data
+  historyRows.forEach(row => {
     const orderId = norm(get(row, ["Order No","OrderNo","Order Number","Order_No","Order_Number","Order ID","OrderID"]));
     if (orderId) map.set(orderId, { ...row });
   });
 
-  // Overwrite/Update with latest status from Vinculum current month file
-  newUploadedRows.forEach(row => {
+  // 2. Overwrite with latest current month data
+  currentRows.forEach(row => {
     const orderId = norm(get(row, ["Order No","OrderNo","Order Number","Order_No","Order_Number","Order ID","OrderID"]));
     if (orderId) map.set(orderId, { ...row });
   });
@@ -472,7 +471,7 @@ document.querySelectorAll(".tab").forEach(btn=>btn.addEventListener("click",()=>
 ["slaWarehouse","slaChannel","slaStatus","slaFrom","slaTo"].forEach(id=>$(id).addEventListener("change",applySlaFilters));
 $("globalOrderSearch").addEventListener("input",()=>{renderOrders();if($("slaTab").classList.contains("active-panel"))applySlaFilters();});
 
-// EVENT LISTENER FOR UPLOADING CURRENT MONTH VINCULUM EXCEL
+// Manual Upload Option (Backup)
 $("file").addEventListener("change",async e=>{
   const f=e.target.files[0];
   if(!f)return;
@@ -480,38 +479,59 @@ $("file").addEventListener("change",async e=>{
     const newlyUploadedData = parseWorkbookBuffer(await f.arrayBuffer());
     if(!newlyUploadedData.length)throw Error("Excel is empty or no valid rows found");
     
-    // Combine base GitHub data with current uploaded Vinculum Excel
     raw = mergeAndDeduplicate(raw, newlyUploadedData);
 
     populateFilters();
     renderOrders();
     initSlaFilters();
     applySlaFilters();
-    $("sourceText").textContent=`Merged Upload • ${raw.length.toLocaleString()} total unique orders • Current File: ${f.name} • ${new Date().toLocaleString()}`;
+    $("sourceText").textContent=`Manual Upload Merged • ${raw.length.toLocaleString()} total unique orders • File: ${f.name}`;
   }catch(err){
     alert("File read nahi ho payi: "+err.message);
   }
   e.target.value="";
 });
 
-async function loadCentralExcel(){
-  try{
-    const r=await fetch("data.xlsx?ts="+Date.now(),{cache:"no-store"});
-    if(!r.ok)throw Error("data.xlsx not found");
-    raw=parseWorkbookBuffer(await r.arrayBuffer());
-    if(!raw.length)throw Error("No order data found");
-    populateFilters();
-    renderOrders();
-    initSlaFilters();
-    applySlaFilters();
+// AUTO FETCH BOTH data.xlsx AND history.xlsx
+async function loadAllExcelData(){
+  $("sourceText").textContent = "Loading live data.xlsx & history.xlsx…";
+  let currentMonthData = [];
+  let historyData = [];
 
-    fetchGitHubCommitTime();
-  }catch(e){
-    $("sourceText").textContent="LIVE Order report unavailable — use Upload Vinculum Excel";
-    raw=[];
-    populateFilters();
-    renderOrders();
+  // 1. Fetch current month auto-data (data.xlsx)
+  try {
+    const resCurrent = await fetch("data.xlsx?ts=" + Date.now(), { cache: "no-store" });
+    if (resCurrent.ok) {
+      currentMonthData = parseWorkbookBuffer(await resCurrent.arrayBuffer());
+    }
+  } catch (err) {
+    console.warn("data.xlsx fetch failed", err);
   }
+
+  // 2. Fetch history data (history.xlsx)
+  try {
+    const resHistory = await fetch("history.xlsx?ts=" + Date.now(), { cache: "no-store" });
+    if (resHistory.ok) {
+      historyData = parseWorkbookBuffer(await resHistory.arrayBuffer());
+    }
+  } catch (err) {
+    console.warn("history.xlsx fetch failed", err);
+  }
+
+  // 3. Combine both sources
+  raw = mergeAndDeduplicate(historyData, currentMonthData);
+
+  if (raw.length === 0) {
+    $("sourceText").textContent = "No data loaded. Please verify data.xlsx or history.xlsx in repository.";
+    return;
+  }
+
+  populateFilters();
+  renderOrders();
+  initSlaFilters();
+  applySlaFilters();
+
+  fetchGitHubCommitTime();
 }
 
 async function fetchGitHubCommitTime() {
@@ -520,18 +540,17 @@ async function fetchGitHubCommitTime() {
     if (res.ok) {
       const data = await res.json();
       if (data && data.length > 0) {
-        const commitMsg = data[0].commit.message;
         const commitDate = new Date(data[0].commit.committer.date).toLocaleString('en-IN', {
           day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true
         });
-        $("sourceText").textContent = `LIVE Vinculum Order report • ${raw.length.toLocaleString()} report rows • data.xlsx • Last Sync: ${commitDate} (${commitMsg})`;
+        $("sourceText").textContent = `LIVE Orders (data.xlsx + history.xlsx) • ${raw.length.toLocaleString()} orders • Last Sync: ${commitDate}`;
         return;
       }
     }
   } catch (err) {
-    console.warn("GitHub commit fetch failed, fallback to local date", err);
+    console.warn("GitHub commit fetch failed", err);
   }
-  $("sourceText").textContent = `LIVE Vinculum Order report • ${raw.length.toLocaleString()} report rows • data.xlsx • Loaded ${new Date().toLocaleString()}`;
+  $("sourceText").textContent = `LIVE Orders (data.xlsx + history.xlsx) • ${raw.length.toLocaleString()} total orders`;
 }
 </script>
 </body>
