@@ -159,8 +159,8 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
 const GITHUB_REPO_OWNER = "Kamal2-Pal";
 const GITHUB_REPO_NAME = "Kamal-pal-Dashboard";
 
-// Published Google Sheet CSV Link
-const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR-CEeJBC89FWgtZHrFqn6shfhF614KWBSx6dJFlrDn3CNpHw4QubHRzpjquqRFnc4TKdYDoI0zQSwK/pub?output=csv";
+// Updated Published Google Sheet CSV Link with tab ID 833925312
+const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR-CEeJBC89FWgtZHrFqn6shfhF614KWBSx6dJFlrDn3CNpHw4QubHRzpjquqRFnc4TKdYDoI0zQSwK/pub?gid=833925312&single=true&output=csv";
 
 let googleSheetRemarksMap = {}; // { orderId: { openRemark, breachRemark } }
 
@@ -292,7 +292,7 @@ function mergeAndDeduplicate(historyRows, currentRows) {
 // Fetch Google Sheets Data
 async function fetchGoogleSheetData() {
   try {
-    const url = GOOGLE_SHEET_CSV_URL + (GOOGLE_SHEET_CSV_URL.includes('?') ? '&' : '?') + 't=' + Date.now();
+    const url = GOOGLE_SHEET_CSV_URL + '&t=' + Date.now();
     const response = await fetch(url);
     if(!response.ok) return;
     const csvText = await response.text();
@@ -341,7 +341,6 @@ async function fetchGoogleSheetData() {
 function getEffectiveRemark(r, type = "general") {
   const orderId = norm(get(r, ["Order No","OrderNo","Order Number","Order_No","Order_Number","Order ID","OrderID"]));
   
-  // Google Sheets Mapping (Col B / Col C)
   if (googleSheetRemarksMap[orderId]) {
     if (type === "open" && googleSheetRemarksMap[orderId].openRemark) {
       return googleSheetRemarksMap[orderId].openRemark;
@@ -354,7 +353,6 @@ function getEffectiveRemark(r, type = "general") {
     }
   }
 
-  // Fallback to Excel Column
   return norm(get(r, ["WH remarks","WH Remarks","WH remarks ","Remarks"]));
 }
 
@@ -505,7 +503,6 @@ function renderSla(rows){
   });
   miniChart("slaDayChart",Object.entries(daily).sort().slice(-14).map(([d,x])=>[d,x.total?(x.ok/x.total*100):0]));
 
-  // WH Remarks Summary — Breached Orders (Col C Google Sheet)
   const br=rows.filter(r=>r._sla==="Breached"),remarks={};
   br.forEach(r=>{
     const x=getEffectiveRemark(r, "breach")||"Blank / No Remarks";
@@ -513,7 +510,6 @@ function renderSla(rows){
   });
   $("slaRemarksTbody").innerHTML=Object.entries(remarks).sort((a,b)=>b[1]-a[1]).map(([x,v])=>`<tr><td>${esc(x)}</td><td>${v.toLocaleString()}</td><td>${breach?(v/breach*100).toFixed(1):"0.0"}%</td></tr>`).join("")||"<tr><td colspan=3>No breached orders.</td></tr>";
 
-  // Open >48H Orders (Col B Google Sheet)
   const open=rows.filter(r=>r._sla==="Open >48H" || r._sla==="Breached").sort((a,b)=>(b._hours||0)-(a._hours||0));
   $("slaOpen48RemarksTbody").innerHTML=open.map(r=>{
     const orderId=norm(get(r,["Order No","OrderNo","Order ID"]));
