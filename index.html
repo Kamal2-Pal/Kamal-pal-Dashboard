@@ -38,6 +38,7 @@ button,.upload-label{border:1px solid #d4dbe3;background:#fff;padding:9px 12px;b
 .wrap{max-width:1550px;margin:auto;padding:18px}
 .tab-panel{display:none}.active-panel{display:block}
 .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:16px}
+.sla-kpis{display:grid;grid-template-columns:repeat(8,1fr);gap:12px;margin-bottom:16px}
 .kpi,.card,.ops-card{background:#fff;border:1px solid #e1e6eb;border-radius:11px;padding:16px;box-shadow:0 2px 8px #0000000a}
 .kpi small{color:#687686;text-transform:uppercase;font-size:10px;font-weight:800}.kpi strong{display:block;font-size:26px;margin-top:7px}
 .coverage,.note{font-size:12px;color:#637181}.coverage{background:#eef6ff;border:1px solid #d5e8ff;padding:10px;border-radius:8px;margin-bottom:16px}
@@ -56,8 +57,9 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
 .good{color:#187a43;font-weight:800}.bad{color:#c52f2f;font-weight:800}.risk{color:#a46d00;font-weight:800}.muted{color:#788594}
 .ops-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}.ops-card h3{font-size:13px;margin:0 0 7px}.ops-card .big{font-size:24px;font-weight:800}
 .sla-head{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:14px}.sla-head h2{margin:0 0 5px}.sla-target{background:#fff;border:1px solid #dfe6ed;border-radius:9px;padding:10px 15px;text-align:center}
+@media(max-width:1200px){.sla-kpis{grid-template-columns:repeat(4,1fr)}}
 @media(max-width:1000px){.kpis{grid-template-columns:repeat(3,1fr)}.header{align-items:flex-start;flex-direction:column}.ops-summary{grid-template-columns:1fr}}
-@media(max-width:650px){.kpis{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.wrap{padding:10px}.tabs{padding:9px}.header-search{min-width:100%}}
+@media(max-width:650px){.kpis,.sla-kpis{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.wrap{padding:10px}.tabs{padding:9px}.header-search{min-width:100%}}
 </style>
 </head>
 <body>
@@ -134,7 +136,7 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
 
 <section id="slaTab" class="tab-panel">
   <div class="sla-head"><div><h2>48H SLA Dashboard</h2><div class="note">SLA basis: Order create date → Actual_ShipDate. Target = 48 hours. Open orders are not treated as shipped breaches until their age exceeds 48H.</div></div><div class="sla-target">Target<br><b>48 Hours</b></div></div>
-  <div class="kpis" id="slaKpis"></div>
+  <div class="sla-kpis" id="slaKpis"></div>
   <div class="filters">
     <div class="field">Warehouse<select id="slaWarehouse"><option value="">All Warehouses</option></select></div>
     <div class="field">Finance Category<select id="slaChannel"><option value="">All Finance Categories</option></select></div>
@@ -476,8 +478,27 @@ function initSlaFilters(){
 }
 
 function renderSla(rows){
-  const total=rows.length,within=rows.filter(r=>r._sla==="Within SLA").length,breach=rows.filter(r=>r._sla==="Breached").length,risk=rows.filter(r=>r._sla==="At Risk").length,open48=rows.filter(r=>r._sla==="Open >48H").length,measured=within+breach,pct=measured?(within/measured*100):0;
-  $("slaKpis").innerHTML=[["Unique Orders",total],["Within SLA",within],["Breached",breach],["At Risk",risk],["Open >48H",open48],["SLA %",pct.toFixed(1)+"%"]].map(x=>`<div class="kpi"><small>${x[0]}</small><strong>${x[1]}</strong></div>`).join("");
+  const total=rows.length;
+  const within=rows.filter(r=>r._sla==="Within SLA").length;
+  const breach=rows.filter(r=>r._sla==="Breached").length;
+  const risk=rows.filter(r=>r._sla==="At Risk").length;
+  const openUnder48=rows.filter(r=>r._sla==="Open <48H").length;
+  const openOver48=rows.filter(r=>r._sla==="Open >48H").length;
+  
+  const measured=within+breach;
+  const slaPct=measured?(within/measured*100):0;
+  const breachPct=total?(breach/total*100):0;
+
+  $("slaKpis").innerHTML=[
+    ["Unique Orders", total.toLocaleString()],
+    ["Within SLA", within.toLocaleString()],
+    ["Breached", breach.toLocaleString()],
+    ["Breached %", breachPct.toFixed(1)+"%"],
+    ["At Risk", risk.toLocaleString()],
+    ["Open <48H", openUnder48.toLocaleString()],
+    ["Open >48H", openOver48.toLocaleString()],
+    ["SLA %", slaPct.toFixed(1)+"%"]
+  ].map(x=>`<div class="kpi"><small>${x[0]}</small><strong>${x[1]}</strong></div>`).join("");
   
   hbar("slaStatusChart",counts(rows,"_sla"));
   hbar("slaWarehouseChart",counts(rows,"FulfillmentLocationName"));
