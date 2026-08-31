@@ -161,8 +161,8 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
 const GITHUB_REPO_OWNER = "Kamal2-Pal";
 const GITHUB_REPO_NAME = "Kamal-pal-Dashboard";
 
-// Published Google Sheet CSV Link
-const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR-CEeJBC89FWgtZHrFqn6shfhF614KWBSx6dJFlrDn3CNpHw4QubHRzpjquqRFnc4TKdYDoI0zQSwK/pub?gid=833925312&single=true&output=csv";
+// Updated Google Sheet Link with explicit GID for B2B Order Remakrs
+const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR-CEeJBC89FWgtZHrFqn6shfhF614KWBSx6dJFlrDn3CNpHw4QUbHRzpjquqRFnc4TKdYDol0zQSwK/pub?gid=1507121858&single=true&output=csv";
 
 let googleSheetRemarksMap = {}; 
 
@@ -258,12 +258,10 @@ function parseWorkbookBuffer(buf){
   return bestRows;
 }
 
-// Preserve all raw rows when merging datasets
 function mergeAndDeduplicate(historyRows, currentRows) {
   return [...historyRows, ...currentRows];
 }
 
-// Aggregate quantities for unique Order Nos correctly
 function orderLevel(rows){
   const map=new Map();
   rows.forEach(r=>{
