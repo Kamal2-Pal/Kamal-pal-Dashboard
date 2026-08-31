@@ -329,7 +329,6 @@ async function fetchGoogleSheetData() {
         }
 
         console.log("Sheet Connected Successfully! Total Loaded Orders:", Object.keys(googleSheetRemarksMap).length);
-        console.log("Sample Data Map:", googleSheetRemarksMap);
 
         if ($("slaTab") && $("slaTab").classList.contains("active-panel")) {
           applySlaFilters();
@@ -446,8 +445,10 @@ function renderOrders(){
 
   const cols=current.length?Object.keys(current[0]).slice(0,10):["Order No","Order create date","Status","FulfillmentLocationName","finance_category","Order Qty","Picked Qty","Shipped Qty","Open Qty","Actual_ShipDate"];
   $("thead").innerHTML="<tr>"+cols.map(c=>`<th>${esc(c)}</th>`).join("")+"</tr>";
-  $("tbody").innerHTML=current.slice(0,5000).map(r=>"<tr>"+cols.map(c=>`<td>${esc(get(r,[c]))}</td>`).join("")+"</tr>").join("");
-  $("rowNote").textContent=`Showing ${Math.min(current.length,5000).toLocaleString()} of ${current.length.toLocaleString()} unique orders.`;
+  
+  // Render Max 100 rows for DOM performance
+  $("tbody").innerHTML=current.slice(0,100).map(r=>"<tr>"+cols.map(c=>`<td>${esc(get(r,[c]))}</td>`).join("")+"</tr>").join("");
+  $("rowNote").textContent=`Showing ${Math.min(current.length,100).toLocaleString()} of ${current.length.toLocaleString()} unique orders (Optimized for performance).`;
 }
 
 function buildSlaRows(){
@@ -509,7 +510,7 @@ function renderSla(rows){
   $("slaRemarksTbody").innerHTML=Object.entries(remarks).sort((a,b)=>b[1]-a[1]).map(([x,v])=>`<tr><td>${esc(x)}</td><td>${v.toLocaleString()}</td><td>${breach?(v/breach*100).toFixed(1):"0.0"}%</td></tr>`).join("")||"<tr><td colspan=3>No breached orders.</td></tr>";
 
   const open=rows.filter(r=>r._sla==="Open >48H" || r._sla==="Breached").sort((a,b)=>(b._hours||0)-(a._hours||0));
-  $("slaOpen48RemarksTbody").innerHTML=open.map(r=>{
+  $("slaOpen48RemarksTbody").innerHTML=open.slice(0, 100).map(r=>{
     const orderId=norm(get(r,["Order No","OrderNo","Order ID"]));
     const currentRemark=getEffectiveRemark(r, "open");
     return `<tr>
@@ -523,12 +524,14 @@ function renderSla(rows){
 
   const cols=["Order No","Order create date","Status","FulfillmentLocationName","finance_category","Order Qty","Manifest Create Date","Actual_ShipDate"];
   $("slaThead").innerHTML="<tr>"+cols.map(c=>`<th>${esc(c)}</th>`).join("")+"<th>SLA Status</th><th>Hours Taken</th><th>SLA Due</th><th>WH Remark</th></tr>";
-  $("slaTbody").innerHTML=rows.slice(0,5000).map(r=>{
+  
+  // Render Max 100 rows for DOM performance
+  $("slaTbody").innerHTML=rows.slice(0,100).map(r=>{
     const cls=r._sla==="Within SLA"?"good":r._sla==="Breached"?"bad":r._sla==="At Risk"?"risk":"";
     const rem=getEffectiveRemark(r);
     return "<tr>"+cols.map(c=>`<td>${esc(get(r,[c]))}</td>`).join("")+`<td class="${cls}">${esc(r._sla)}</td><td>${r._hours==null?"":r._hours.toFixed(1)}</td><td>${r._due?r._due.toLocaleString():""}</td><td><b>${esc(rem)}</b></td></tr>`;
   }).join("");
-  $("slaNote").textContent=`Showing ${Math.min(total,5000).toLocaleString()} of ${total.toLocaleString()} unique orders • SLA = Order create date → Actual_ShipDate • target 48 hours.`;
+  $("slaNote").textContent=`Showing ${Math.min(total,100).toLocaleString()} of ${total.toLocaleString()} unique orders • SLA = Order create date → Actual_ShipDate • target 48 hours.`;
 }
 
 function clearFilters(){["warehouse","channel","status","orderType","fromDate","toDate"].forEach(id=>$(id).value="");populateFilters();renderOrders();initSlaFilters();applySlaFilters();}
@@ -544,7 +547,16 @@ document.querySelectorAll(".tab").forEach(btn=>btn.addEventListener("click",()=>
 
 ["warehouse","channel","status","orderType","fromDate","toDate","globalMonthFilter"].forEach(id=>$(id).addEventListener("change",()=>{renderOrders();if($("slaTab").classList.contains("active-panel")){initSlaFilters();applySlaFilters()}}));
 ["slaWarehouse","slaChannel","slaStatus","slaFrom","slaTo"].forEach(id=>$(id).addEventListener("change",applySlaFilters));
-$("globalOrderSearch").addEventListener("input",()=>{renderOrders();if($("slaTab").classList.contains("active-panel"))applySlaFilters();});
+
+// Debounced Search to prevent freeze during fast typing
+let searchDebounceTimeout;
+$("globalOrderSearch").addEventListener("input",()=>{
+  clearTimeout(searchDebounceTimeout);
+  searchDebounceTimeout = setTimeout(() => {
+    renderOrders();
+    if($("slaTab").classList.contains("active-panel")) applySlaFilters();
+  }, 300);
+});
 
 $("file").addEventListener("change",async e=>{
   const f=e.target.files[0];
