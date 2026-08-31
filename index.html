@@ -10,7 +10,6 @@
 *{box-sizing:border-box}
 body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f3f5f7;color:#182230}
 
-/* Login Modal Styling */
 #loginOverlay{position:fixed;top:0;left:0;width:100%;height:100%;background:#0d1117;display:flex;align-items:center;justify-content:center;z-index:9999}
 .login-card{background:#fff;border-radius:16px;padding:32px;width:100%;max-width:420px;box-shadow:0 10px 25px rgba(0,0,0,0.3);text-align:center}
 .login-card .logo{width:50px;height:50px;border-radius:12px;background:#f57c00;display:grid;place-items:center;font-weight:900;color:#fff;font-size:24px;margin:0 auto 16px}
@@ -66,7 +65,7 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
 <div id="loginOverlay">
   <div class="login-card">
     <div class="logo">V</div>
-    <h2>PW- Master Dashboard</h2>
+    <h2>PW - Master Dashboard</h2>
     <p>Company login required.<br>Only authorised <b>@pw.live</b> accounts can access this dashboard.</p>
     <div class="login-form">
       <input type="email" id="loginEmail" placeholder="Company Email (@pw.live)" required>
@@ -83,7 +82,7 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
     <div class="header-search">⌕ <input id="globalOrderSearch" placeholder="Search Order No…" aria-label="Search Order No"></div>
     <div class="header-month"><label>MONTH</label><select id="globalMonthFilter"><option value="">All Months</option></select></div>
     <div class="actions">
-      <label class="upload-label primary" for="file">＋ Upload Vinculum Excel</label>
+      <label class="upload-label primary" for="file">＋ Upload Current Vinculum Excel</label>
       <button onclick="loadCentralExcel()">↻ Refresh</button>
       <button onclick="handleLogout()" style="background:#c52f2f;color:#fff;border:none">Logout</button>
     </div>
@@ -157,16 +156,13 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
 </main>
 
 <script>
-// Supabase Configuration
 const SUPABASE_URL = "https://nfacejugcsbmljqqswpy.supabase.co";
 const SUPABASE_KEY = "sb_publishable_nH2Bmsb9gm29Txb9-5pynw_-vzcFSHX";
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// GitHub Repository Configuration for Auto-Update Commit Message
 const GITHUB_REPO_OWNER = "Kamal2-Pal";
 const GITHUB_REPO_NAME = "Kamal-pal-Dashboard";
 
-// Check Active Session on Page Load
 window.addEventListener('DOMContentLoaded', async () => {
   const { data: { session } } = await _supabase.auth.getSession();
   if (session) {
@@ -175,7 +171,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
-// Login Handler
 async function handleLogin() {
   const email = document.getElementById('loginEmail').value.trim();
   const password = document.getElementById('loginPassword').value;
@@ -199,7 +194,6 @@ async function handleLogin() {
   }
 }
 
-// Logout Handler
 async function handleLogout() {
   await _supabase.auth.signOut();
   document.getElementById('loginOverlay').style.display = 'flex';
@@ -225,7 +219,6 @@ function get(r,names){
 function unique(a){return [...new Set(a.map(norm).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));}
 function num(v){const n=Number(String(v??"").replace(/,/g,""));return isFinite(n)?n:0;}
 
-// Enhanced Safe Date Parser
 function dateVal(v){
   if(v===null||v===undefined||v==="") return null;
   if(v instanceof Date) return isNaN(v.getTime()) ? null : v;
@@ -242,7 +235,6 @@ function dateVal(v){
   return isNaN(d.getTime())?null:d;
 }
 
-// Safe YYYY-MM-DD Key Generator
 function dateKey(v){
   const d=dateVal(v);
   if(!d || isNaN(d.getTime())) return "";
@@ -278,6 +270,25 @@ function orderLevel(rows){
     }
   });
   return map.size > 0 ? [...map.values()] : rows;
+}
+
+// FAST AUTO MERGE LOGIC (Current + Archived Historical Data)
+function mergeAndDeduplicate(existingRows, newUploadedRows) {
+  const map = new Map();
+
+  // Load existing base data
+  existingRows.forEach(row => {
+    const orderId = norm(get(row, ["Order No","OrderNo","Order Number","Order_No","Order_Number","Order ID","OrderID"]));
+    if (orderId) map.set(orderId, { ...row });
+  });
+
+  // Overwrite/Update with latest status from Vinculum current month file
+  newUploadedRows.forEach(row => {
+    const orderId = norm(get(row, ["Order No","OrderNo","Order Number","Order_No","Order_Number","Order ID","OrderID"]));
+    if (orderId) map.set(orderId, { ...row });
+  });
+
+  return Array.from(map.values());
 }
 
 function fill(id,values,label){
@@ -410,7 +421,7 @@ function initSlaFilters(){
 }
 
 function renderSla(rows){
-  const total=rows.length,within=rows.filter(r=>r._sla==="Within SLA").length,breach=rows.filter(r=>r._sla==="Breached").length,risk=rows.filter(r=>r._sla==="At Risk").length,open48=rows.filter(r=>r._sla==="Open >48H").length,openUnder=rows.filter(r=>r._sla==="Open <48H").length,measured=within+breach,pct=measured?within/measured*100:0;
+  const total=rows.length,within=rows.filter(r=>r._sla==="Within SLA").length,breach=rows.filter(r=>r._sla==="Breached").length,risk=rows.filter(r=>r._sla==="At Risk").length,open48=rows.filter(r=>r._sla==="Open >48H").length,measured=within+breach,pct=measured?(within/measured*100):0;
   $("slaKpis").innerHTML=[["Unique Orders",total],["Within SLA",within],["Breached",breach],["At Risk",risk],["Open >48H",open48],["SLA %",pct.toFixed(1)+"%"]].map(x=>`<div class="kpi"><small>${x[0]}</small><strong>${x[1]}</strong></div>`).join("");
   
   hbar("slaStatusChart",counts(rows,"_sla"));
@@ -425,7 +436,7 @@ function renderSla(rows){
       if(r._sla==="Within SLA")daily[d].ok++;
     }
   });
-  miniChart("slaDayChart",Object.entries(daily).sort().slice(-14).map(([d,x])=>[d,x.total?x.ok/x.total*100:0]));
+  miniChart("slaDayChart",Object.entries(daily).sort().slice(-14).map(([d,x])=>[d,x.total?(x.ok/x.total*100):0]));
 
   const br=rows.filter(r=>r._sla==="Breached"),remarks={};
   br.forEach(r=>{
@@ -435,15 +446,15 @@ function renderSla(rows){
   $("slaRemarksTbody").innerHTML=Object.entries(remarks).sort((a,b)=>b[1]-a[1]).map(([x,v])=>`<tr><td>${esc(x)}</td><td>${v.toLocaleString()}</td><td>${breach?(v/breach*100).toFixed(1):"0.0"}%</td></tr>`).join("")||"<tr><td colspan=3>No breached orders.</td></tr>";
 
   const open=rows.filter(r=>r._sla==="Open >48H").sort((a,b)=>(b._hours||0)-(a._hours||0));
-  $("slaOpen48RemarksTbody").innerHTML=open.map(r=>`<tr><td>${esc(get(r,["Order No","OrderNo","Order ID"]))}</td><td>${esc(get(r,["FulfillmentLocationName","Warehouse","Location"]))}</td><td>${esc(get(r,["Order create date","OrderDate","Date"]))}</td><td>${r._hours.toFixed(1)}</td><td>${esc(norm(get(r,["WH remarks","WH Remarks","WH remarks ","Remarks"]))||"Blank / No Remarks")}</td></tr>`).join("")||"<tr><td colspan=5>No open orders above 48 hours.</td></tr>";
+  $("slaOpen48RemarksTbody").innerHTML=open.map(r=>`<tr><td>${esc(get(r,["Order No","OrderNo","Order ID"]))}</td><td>${esc(get(r,["FulfillmentLocationName","Warehouse","Location"]))}</td><td>${esc(get(r,["Order create date","OrderDate","Date"]))}</td><td>${r._hours?r._hours.toFixed(1):"0.0"}</td><td>${esc(norm(get(r,["WH remarks","WH Remarks","WH remarks ","Remarks"]))||"Blank / No Remarks")}</td></tr>`).join("")||"<tr><td colspan=5>No open orders above 48 hours.</td></tr>";
 
   const cols=["Order No","Order create date","Status","FulfillmentLocationName","finance_category","Order Qty","Manifest Create Date","Actual_ShipDate"];
   $("slaThead").innerHTML="<tr>"+cols.map(c=>`<th>${esc(c)}</th>`).join("")+"<th>SLA Status</th><th>Hours Taken</th><th>SLA Due</th><th>Milestone Used</th></tr>";
-  $("slaTbody").innerHTML=rows.slice(0, 5000).map(r=>{
+  $("slaTbody").innerHTML=rows.slice(0,5000).map(r=>{
     const cls=r._sla==="Within SLA"?"good":r._sla==="Breached"?"bad":r._sla==="At Risk"?"risk":"";
     return "<tr>"+cols.map(c=>`<td>${esc(get(r,[c]))}</td>`).join("")+`<td class="${cls}">${esc(r._sla)}</td><td>${r._hours==null?"":r._hours.toFixed(1)}</td><td>${r._due?r._due.toLocaleString():""}</td><td>${esc(r._slaMilestone)}</td></tr>`;
   }).join("");
-  $("slaNote").textContent=`${total.toLocaleString()} unique orders • SLA = Order create date → Actual_ShipDate • target 48 hours.`;
+  $("slaNote").textContent=`Showing ${Math.min(total,5000).toLocaleString()} of ${total.toLocaleString()} unique orders • SLA = Order create date → Actual_ShipDate • target 48 hours.`;
 }
 
 function clearFilters(){["warehouse","channel","status","orderType","fromDate","toDate"].forEach(id=>$(id).value="");populateFilters();renderOrders();initSlaFilters();applySlaFilters();}
@@ -461,17 +472,22 @@ document.querySelectorAll(".tab").forEach(btn=>btn.addEventListener("click",()=>
 ["slaWarehouse","slaChannel","slaStatus","slaFrom","slaTo"].forEach(id=>$(id).addEventListener("change",applySlaFilters));
 $("globalOrderSearch").addEventListener("input",()=>{renderOrders();if($("slaTab").classList.contains("active-panel"))applySlaFilters();});
 
+// EVENT LISTENER FOR UPLOADING CURRENT MONTH VINCULUM EXCEL
 $("file").addEventListener("change",async e=>{
   const f=e.target.files[0];
   if(!f)return;
   try{
-    raw=parseWorkbookBuffer(await f.arrayBuffer());
-    if(!raw.length)throw Error("Excel is empty or no valid rows found");
+    const newlyUploadedData = parseWorkbookBuffer(await f.arrayBuffer());
+    if(!newlyUploadedData.length)throw Error("Excel is empty or no valid rows found");
+    
+    // Combine base GitHub data with current uploaded Vinculum Excel
+    raw = mergeAndDeduplicate(raw, newlyUploadedData);
+
     populateFilters();
     renderOrders();
     initSlaFilters();
     applySlaFilters();
-    $("sourceText").textContent=`Live upload • ${raw.length.toLocaleString()} report rows • ${f.name} • ${new Date().toLocaleString()}`;
+    $("sourceText").textContent=`Merged Upload • ${raw.length.toLocaleString()} total unique orders • Current File: ${f.name} • ${new Date().toLocaleString()}`;
   }catch(err){
     alert("File read nahi ho payi: "+err.message);
   }
@@ -480,34 +496,16 @@ $("file").addEventListener("change",async e=>{
 
 async function loadCentralExcel(){
   try{
-    $("sourceText").textContent = "Loading LIVE Vinculum Order report… Please wait…";
-    await new Promise(r => setTimeout(r, 50));
-
     const r=await fetch("data.xlsx?ts="+Date.now(),{cache:"no-store"});
     if(!r.ok)throw Error("data.xlsx not found");
-    const buffer = await r.arrayBuffer();
+    raw=parseWorkbookBuffer(await r.arrayBuffer());
+    if(!raw.length)throw Error("No order data found");
+    populateFilters();
+    renderOrders();
+    initSlaFilters();
+    applySlaFilters();
 
-    setTimeout(() => {
-      raw = parseWorkbookBuffer(buffer);
-      if(!raw.length) {
-        $("sourceText").textContent = "No order data found in file.";
-        return;
-      }
-
-      setTimeout(() => {
-        populateFilters();
-        renderOrders();
-        
-        setTimeout(() => {
-          initSlaFilters();
-          applySlaFilters();
-          fetchGitHubCommitTime();
-        }, 50);
-
-      }, 50);
-
-    }, 50);
-
+    fetchGitHubCommitTime();
   }catch(e){
     $("sourceText").textContent="LIVE Order report unavailable — use Upload Vinculum Excel";
     raw=[];
