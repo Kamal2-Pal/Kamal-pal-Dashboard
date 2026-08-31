@@ -4,7 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PW - Order Dashboard V2</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
 <style>
@@ -57,10 +56,6 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
 .good{color:#187a43;font-weight:800}.bad{color:#c52f2f;font-weight:800}.risk{color:#a46d00;font-weight:800}.muted{color:#788594}
 .ops-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}.ops-card h3{font-size:13px;margin:0 0 7px}.ops-card .big{font-size:24px;font-weight:800}
 .sla-head{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:14px}.sla-head h2{margin:0 0 5px}.sla-target{background:#fff;border:1px solid #dfe6ed;border-radius:9px;padding:10px 15px;text-align:center}
-.remark-input{padding:4px 8px;border:1px solid #ccc;border-radius:4px;font-size:11px;width:180px}
-.save-btn{padding:4px 10px;background:#28a745;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px;margin-left:4px}
-.save-btn:hover{background:#218838}
-.sheet-badge{font-size:11px;padding:2px 6px;border-radius:4px;background:#e3f2fd;color:#1565c0;font-weight:bold;margin-left:5px}
 @media(max-width:1000px){.kpis{grid-template-columns:repeat(3,1fr)}.header{align-items:flex-start;flex-direction:column}.ops-summary{grid-template-columns:1fr}}
 @media(max-width:650px){.kpis{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.wrap{padding:10px}.tabs{padding:9px}.header-search{min-width:100%}}
 </style>
@@ -88,13 +83,11 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
     <div class="header-month"><label>MONTH</label><select id="globalMonthFilter"><option value="">All Months</option></select></div>
     <div class="actions">
       <label class="upload-label primary" for="file">＋ Manual Excel Upload</label>
-      <label class="upload-label" for="remarkFile" style="background:#0288d1;color:#fff;border-color:#0288d1">📤 Bulk CSV Remarks Upload</label>
       <button onclick="loadAllExcelData()">↻ Refresh</button>
       <button onclick="handleLogout()" style="background:#c52f2f;color:#fff;border:none">Logout</button>
     </div>
   </div>
   <input id="file" type="file" accept=".xlsx,.xlsb,.xlsm,.xls,.csv" hidden>
-  <input id="remarkFile" type="file" accept=".xlsx,.xls,.csv" hidden>
 </header>
 
 <div class="tabs">
@@ -157,58 +150,53 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
     <section class="card"><div class="section-title">SLA Rules</div><div class="note"><p>🟢 <b>Within SLA</b> — Actual Ship in ≤ 48 hours</p><p>🔴 <b>Breached</b> — Actual Ship after 48 hours or open beyond 48 hours</p><p>🟠 <b>At Risk</b> — open and due within next 6 hours</p><p>⚪ <b>Open &lt;48H</b> — still open within target</p></div></section>
   </div>
   <section class="table-card"><div class="section-title">WH Remarks — Breached Orders (Col C Google Sheet)</div><div class="table-wrap"><table><thead><tr><th>WH Remarks</th><th>Breached Orders</th><th>% of Breached</th></tr></thead><tbody id="slaRemarksTbody"></tbody></table></div></section>
-  <section class="table-card"><div class="section-title">Open &gt;48H — Order-wise Remarks (Col B Google Sheet)</div><div class="table-wrap"><table><thead><tr><th>Order No</th><th>Warehouse</th><th>Order Create Date</th><th>Open Hours</th><th>WH Remarks (Live Sync)</th><th>Action</th></tr></thead><tbody id="slaOpen48RemarksTbody"></tbody></table></div></section>
+  <section class="table-card"><div class="section-title">Open &gt;48H — Order-wise Remarks (Col B Google Sheet)</div><div class="table-wrap"><table><thead><tr><th>Order No</th><th>Warehouse</th><th>Order Create Date</th><th>Open Hours</th><th>WH Remarks (Live Sheet)</th></tr></thead><tbody id="slaOpen48RemarksTbody"></tbody></table></div></section>
   <section class="table-card"><div class="section-title">48H SLA Order Details</div><div class="note" id="slaNote"></div><div class="table-wrap"><table><thead id="slaThead"></thead><tbody id="slaTbody"></tbody></table></div></section>
 </section>
 </main>
 
 <script>
-const SUPABASE_URL = "https://nfacejugcsbmljqqswpy.supabase.co";
-const SUPABASE_KEY = "sb_publishable_nH2Bmsb9gm29Txb9-5pynw_-vzcFSHX";
-const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
 const GITHUB_REPO_OWNER = "Kamal2-Pal";
 const GITHUB_REPO_NAME = "Kamal-pal-Dashboard";
 
-// Google Sheet Published CSV Link
+// Published Google Sheet CSV Link
 const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR-CEeJBC89FWgtZHrFqn6shfhF614KWBSx6dJFlrDn3CNpHw4QubHRzpjquqRFnc4TKdYDoI0zQSwK/pub?output=csv";
 
-let savedDbRemarks = {};
 let googleSheetRemarksMap = {}; // { orderId: { openRemark, breachRemark } }
 
-window.addEventListener('DOMContentLoaded', async () => {
-  const { data: { session } } = await _supabase.auth.getSession();
-  if (session) {
+// Email Authentication Logic
+window.addEventListener('DOMContentLoaded', () => {
+  const user = sessionStorage.getItem("pw_user");
+  if (user) {
     document.getElementById('loginOverlay').style.display = 'none';
     loadAllExcelData();
   }
 });
 
-async function handleLogin() {
+function handleLogin() {
   const email = document.getElementById('loginEmail').value.trim();
   const password = document.getElementById('loginPassword').value;
   const errorDiv = document.getElementById('loginError');
 
-  if (!email.endsWith('@pw.live')) {
+  if (!email.toLowerCase().endsWith('@pw.live')) {
     errorDiv.style.display = 'block';
-    errorDiv.textContent = 'Only @pw.live emails are authorized!';
+    errorDiv.textContent = 'Only @pw.live email addresses are authorized!';
     return;
   }
 
-  errorDiv.style.display = 'none';
-  const { data, error } = await _supabase.auth.signInWithPassword({ email, password });
-
-  if (error) {
+  if (!password) {
     errorDiv.style.display = 'block';
-    errorDiv.textContent = error.message;
-  } else {
-    document.getElementById('loginOverlay').style.display = 'none';
-    loadAllExcelData();
+    errorDiv.textContent = 'Please enter password!';
+    return;
   }
+
+  sessionStorage.setItem("pw_user", email);
+  document.getElementById('loginOverlay').style.display = 'none';
+  loadAllExcelData();
 }
 
-async function handleLogout() {
-  await _supabase.auth.signOut();
+function handleLogout() {
+  sessionStorage.removeItem("pw_user");
   document.getElementById('loginOverlay').style.display = 'flex';
 }
 
@@ -304,7 +292,8 @@ function mergeAndDeduplicate(historyRows, currentRows) {
 // Fetch Google Sheets Data
 async function fetchGoogleSheetData() {
   try {
-    const response = await fetch(GOOGLE_SHEET_CSV_URL + "&t=" + Date.now());
+    const url = GOOGLE_SHEET_CSV_URL + (GOOGLE_SHEET_CSV_URL.includes('?') ? '&' : '?') + 't=' + Date.now();
+    const response = await fetch(url);
     if(!response.ok) return;
     const csvText = await response.text();
     
@@ -317,9 +306,19 @@ async function fetchGoogleSheetData() {
           const keys = Object.keys(row);
           if (keys.length === 0) return;
 
-          const orderId = norm(row[keys[0]] || "");
-          const openRemark = norm(row[keys[1]] || "");
-          const breachRemark = norm(row[keys[2]] || "");
+          let orderId = "", openRemark = "", breachRemark = "";
+          
+          keys.forEach(k => {
+            const cleanKey = k.trim().toLowerCase();
+            if (cleanKey.includes("order")) orderId = norm(row[k]);
+            if (cleanKey.includes("open")) openRemark = norm(row[k]);
+            if (cleanKey.includes("breach") || cleanKey.includes("tat")) breachRemark = norm(row[k]);
+          });
+
+          // Fallback to Column positions (Col A, Col B, Col C)
+          if (!orderId && keys[0]) orderId = norm(row[keys[0]]);
+          if (!openRemark && keys[1]) openRemark = norm(row[keys[1]]);
+          if (!breachRemark && keys[2]) breachRemark = norm(row[keys[2]]);
 
           if (orderId) {
             googleSheetRemarksMap[orderId] = {
@@ -328,7 +327,8 @@ async function fetchGoogleSheetData() {
             };
           }
         });
-        if ($("slaTab").classList.contains("active-panel")) {
+
+        if ($("slaTab") && $("slaTab").classList.contains("active-panel")) {
           applySlaFilters();
         }
       }
@@ -338,53 +338,10 @@ async function fetchGoogleSheetData() {
   }
 }
 
-// Fetch DB Remarks
-async function fetchSavedDbRemarks() {
-  try {
-    const { data, error } = await _supabase.from('wh_remarks').select('order_id, wh_remark');
-    if (data && !error) {
-      savedDbRemarks = {};
-      data.forEach(item => {
-        savedDbRemarks[item.order_id] = item.wh_remark;
-      });
-    }
-  } catch (err) {
-    console.warn("Db remarks fetch error:", err);
-  }
-}
-
-// Save single remark to Supabase
-async function saveRemarkToDb(orderId) {
-  const inputEl = document.getElementById(`remark_input_${orderId}`);
-  if (!inputEl) return;
-  const newRemark = inputEl.value.trim();
-
-  try {
-    const { error } = await _supabase
-      .from('wh_remarks')
-      .upsert({ order_id: orderId, wh_remark: newRemark, updated_at: new Date().toISOString() });
-
-    if (error) {
-      alert("Error saving remark: " + error.message);
-    } else {
-      savedDbRemarks[orderId] = newRemark;
-      alert(`Remark updated for Order #${orderId}`);
-      applySlaFilters();
-    }
-  } catch (err) {
-    alert("Save failed: " + err.message);
-  }
-}
-
 function getEffectiveRemark(r, type = "general") {
   const orderId = norm(get(r, ["Order No","OrderNo","Order Number","Order_No","Order_Number","Order ID","OrderID"]));
   
-  // Priority 1: Direct Supabase database edits
-  if (savedDbRemarks[orderId]) {
-    return savedDbRemarks[orderId];
-  }
-  
-  // Priority 2: Google Sheets Live Column Mapping
+  // Google Sheets Mapping (Col B / Col C)
   if (googleSheetRemarksMap[orderId]) {
     if (type === "open" && googleSheetRemarksMap[orderId].openRemark) {
       return googleSheetRemarksMap[orderId].openRemark;
@@ -397,7 +354,7 @@ function getEffectiveRemark(r, type = "general") {
     }
   }
 
-  // Priority 3: Default Excel Columns
+  // Fallback to Excel Column
   return norm(get(r, ["WH remarks","WH Remarks","WH remarks ","Remarks"]));
 }
 
@@ -548,7 +505,7 @@ function renderSla(rows){
   });
   miniChart("slaDayChart",Object.entries(daily).sort().slice(-14).map(([d,x])=>[d,x.total?(x.ok/x.total*100):0]));
 
-  // WH Remarks Summary — Breached Orders (Mapped from Column C)
+  // WH Remarks Summary — Breached Orders (Col C Google Sheet)
   const br=rows.filter(r=>r._sla==="Breached"),remarks={};
   br.forEach(r=>{
     const x=getEffectiveRemark(r, "breach")||"Blank / No Remarks";
@@ -556,7 +513,7 @@ function renderSla(rows){
   });
   $("slaRemarksTbody").innerHTML=Object.entries(remarks).sort((a,b)=>b[1]-a[1]).map(([x,v])=>`<tr><td>${esc(x)}</td><td>${v.toLocaleString()}</td><td>${breach?(v/breach*100).toFixed(1):"0.0"}%</td></tr>`).join("")||"<tr><td colspan=3>No breached orders.</td></tr>";
 
-  // Open >48H Orders (Mapped from Column B)
+  // Open >48H Orders (Col B Google Sheet)
   const open=rows.filter(r=>r._sla==="Open >48H" || r._sla==="Breached").sort((a,b)=>(b._hours||0)-(a._hours||0));
   $("slaOpen48RemarksTbody").innerHTML=open.map(r=>{
     const orderId=norm(get(r,["Order No","OrderNo","Order ID"]));
@@ -566,10 +523,9 @@ function renderSla(rows){
       <td>${esc(get(r,["FulfillmentLocationName","Warehouse","Location"]))}</td>
       <td>${esc(get(r,["Order create date","OrderDate","Date"]))}</td>
       <td>${r._hours?r._hours.toFixed(1):"0.0"}</td>
-      <td><input type="text" id="remark_input_${orderId}" class="remark-input" value="${esc(currentRemark)}" placeholder="Enter WH remark..."></td>
-      <td><button class="save-btn" onclick="saveRemarkToDb('${orderId}')">Save</button></td>
+      <td><b>${esc(currentRemark || "Blank / No Remark")}</b></td>
     </tr>`;
-  }).join("")||"<tr><td colspan=6>No open orders above 48 hours or breached orders.</td></tr>";
+  }).join("")||"<tr><td colspan=5>No open orders above 48 hours or breached orders.</td></tr>";
 
   const cols=["Order No","Order create date","Status","FulfillmentLocationName","finance_category","Order Qty","Manifest Create Date","Actual_ShipDate"];
   $("slaThead").innerHTML="<tr>"+cols.map(c=>`<th>${esc(c)}</th>`).join("")+"<th>SLA Status</th><th>Hours Taken</th><th>SLA Due</th><th>WH Remark</th></tr>";
@@ -596,40 +552,6 @@ document.querySelectorAll(".tab").forEach(btn=>btn.addEventListener("click",()=>
 ["slaWarehouse","slaChannel","slaStatus","slaFrom","slaTo"].forEach(id=>$(id).addEventListener("change",applySlaFilters));
 $("globalOrderSearch").addEventListener("input",()=>{renderOrders();if($("slaTab").classList.contains("active-panel"))applySlaFilters();});
 
-// Bulk Remarks CSV/Excel Upload Option
-$("remarkFile").addEventListener("change",async e=>{
-  const f=e.target.files[0];
-  if(!f)return;
-  try{
-    const rows = parseWorkbookBuffer(await f.arrayBuffer());
-    if(!rows.length) throw Error("File empty hai!");
-
-    let upsertList = [];
-    rows.forEach(r => {
-      const orderId = norm(get(r, ["Order No", "OrderNo", "Order ID", "OrderID"]));
-      const remark = norm(get(r, ["WH remarks", "WH Remarks", "Remark", "Remarks"]));
-      if (orderId && remark) {
-        upsertList.push({ order_id: orderId, wh_remark: remark, updated_at: new Date().toISOString() });
-      }
-    });
-
-    if (upsertList.length > 0) {
-      const { error } = await _supabase.from('wh_remarks').upsert(upsertList);
-      if (error) alert("Bulk upload error: " + error.message);
-      else {
-        alert(`${upsertList.length} orders ke remarks successfully save ho gaye!`);
-        await fetchSavedDbRemarks();
-        applySlaFilters();
-      }
-    } else {
-      alert("Koi valid 'Order No' aur 'WH Remarks' match nahi hua file mein.");
-    }
-  }catch(err){
-    alert("Bulk Upload Error: " + err.message);
-  }
-  e.target.value="";
-});
-
 $("file").addEventListener("change",async e=>{
   const f=e.target.files[0];
   if(!f)return;
@@ -655,7 +577,6 @@ async function loadAllExcelData(){
   let currentMonthData = [];
   let historyData = [];
 
-  await fetchSavedDbRemarks();
   await fetchGoogleSheetData();
 
   try {
@@ -710,7 +631,7 @@ async function fetchGitHubCommitTime() {
   $("sourceText").textContent = `LIVE Orders (data.xlsx + history.xlsx) • ${raw.length.toLocaleString()} total orders`;
 }
 
-// Live Google Sheet Refresh Interval (Every 30 Seconds)
+// Background Auto-Refresh Google Sheet (Every 30 Seconds)
 setInterval(() => {
   fetchGoogleSheetData();
 }, 30000);
