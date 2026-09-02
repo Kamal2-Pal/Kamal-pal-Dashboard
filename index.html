@@ -56,7 +56,7 @@ th,td{padding:8px;border-bottom:1px solid #edf0f3;text-align:left;white-space:no
 th{background:#f7f9fb;position:sticky;top:0;z-index:1}
 .good{color:#187a43;font-weight:800}.bad{color:#c52f2f;font-weight:800}.risk{color:#a46d00;font-weight:800}.muted{color:#788594}
 .ops-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}.ops-card h3{font-size:13px;margin:0 0 7px}.ops-card .big{font-size:24px;font-weight:800}
-.sla-head{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:14px}.sla-head h2{margin:0 0 5px}.sla-target{background:#fff;border:1px solid #dfe6ed;border-radius:9px;padding:10px 15px;text-align:center}
+.sla-head{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:14px}.sla-head h2{margin:0 0 5px}.sla-target{background:#fff;border:1px solid #dfe6ed;border-radius:99px;padding:10px 15px;text-align:center}
 @media(max-width:1200px){.sla-kpis{grid-template-columns:repeat(4,1fr)}}
 @media(max-width:1000px){.kpis{grid-template-columns:repeat(3,1fr)}.header{align-items:flex-start;flex-direction:column}.ops-summary{grid-template-columns:1fr}}
 @media(max-width:650px){.kpis,.sla-kpis{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.wrap{padding:10px}.tabs{padding:9px}.header-search{min-width:100%}}
@@ -79,7 +79,7 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
 </div>
 
 <header class="header">
-  <div class="title"><div class="logo">V</div><div><h1>PW - Order Dashboard V2</h1><div class="sub" id="sourceText">Loading LIVE Vinculum & History Order reports…</div></div></div>
+  <div class="title"><div class="logo">V</div><div><h1>PW - Order Dashboard V2</h1><div class="sub" id="sourceText">Loading live Vinculum & Multiple History reports…</div></div></div>
   <div class="header-tools">
     <div class="header-search">⌕ <input id="globalOrderSearch" placeholder="Search Order No…" aria-label="Search Order No"></div>
     <div class="header-month"><label>MONTH</label><select id="globalMonthFilter"><option value="">All Months</option></select></div>
@@ -160,8 +160,6 @@ th{background:#f7f9fb;position:sticky;top:0;z-index:1}
 <script>
 const GITHUB_REPO_OWNER = "Kamal2-Pal";
 const GITHUB_REPO_NAME = "Kamal-pal-Dashboard";
-
-// Updated Google Sheet Link with explicit GID for B2B Order Remakrs
 const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR-CEeJBC89FWgtZHrFqn6shfhF614KWBSx6dJFlrDn3CNpHw4QUbHRzpjquqRFnc4TKdYDol0zQSwK/pub?gid=1507121858&single=true&output=csv";
 
 let googleSheetRemarksMap = {}; 
@@ -258,8 +256,12 @@ function parseWorkbookBuffer(buf){
   return bestRows;
 }
 
-function mergeAndDeduplicate(historyRows, currentRows) {
-  return [...historyRows, ...currentRows];
+function mergeAndDeduplicate(...arraysOfRows) {
+  let combined = [];
+  arraysOfRows.forEach(arr => {
+    if (Array.isArray(arr)) combined = combined.concat(arr);
+  });
+  return combined;
 }
 
 function orderLevel(rows){
@@ -305,23 +307,21 @@ async function fetchGoogleSheetData() {
       complete: function(results) {
         googleSheetRemarksMap = {};
         const rows = results.data;
-        if (!rows || rows.length < 2) return;
+        if (!rows || rows.length === 0) return;
 
-        for (let i = 1; i < rows.length; i++) {
-          const row = rows[i];
-          if (!row || row.length === 0) continue;
-
+        rows.forEach((row) => {
+          if (!row || row.length === 0) return;
           const rawOrderId = String(row[0] || "").trim().toUpperCase();
           const openRemark = String(row[1] || "").trim();
           const breachRemark = String(row[2] || "").trim();
 
-          if (rawOrderId) {
+          if (rawOrderId && !["ORDER NO", "ORDER_NO", "ORDER ID"].includes(rawOrderId)) {
             googleSheetRemarksMap[rawOrderId] = {
               openRemark: openRemark,
               breachRemark: breachRemark
             };
           }
-        }
+        });
 
         if ($("slaTab") && $("slaTab").classList.contains("active-panel")) {
           applySlaFilters();
@@ -587,12 +587,14 @@ $("file").addEventListener("change",async e=>{
 });
 
 async function loadAllExcelData(){
-  $("sourceText").textContent = "Loading live data.xlsx & history.xlsx…";
+  $("sourceText").textContent = "Loading live data.xlsx, history.xlsx & history-1.xlsx…";
   let currentMonthData = [];
-  let historyData = [];
+  let historyData1 = [];
+  let historyData2 = [];
 
   await fetchGoogleSheetData();
 
+  // Load Current Month Live Data (data.xlsx)
   try {
     const resCurrent = await fetch("data.xlsx?ts=" + Date.now(), { cache: "no-store" });
     if (resCurrent.ok) {
@@ -602,19 +604,30 @@ async function loadAllExcelData(){
     console.warn("data.xlsx fetch failed", err);
   }
 
+  // Load Part 1 History (history.xlsx)
   try {
-    const resHistory = await fetch("history.xlsx?ts=" + Date.now(), { cache: "no-store" });
-    if (resHistory.ok) {
-      historyData = parseWorkbookBuffer(await resHistory.arrayBuffer());
+    const resH1 = await fetch("history.xlsx?ts=" + Date.now(), { cache: "no-store" });
+    if (resH1.ok) {
+      historyData1 = parseWorkbookBuffer(await resH1.arrayBuffer());
     }
   } catch (err) {
     console.warn("history.xlsx fetch failed", err);
   }
 
-  raw = mergeAndDeduplicate(historyData, currentMonthData);
+  // Load Part 2 History (history-1.xlsx)
+  try {
+    const resH2 = await fetch("history-1.xlsx?ts=" + Date.now(), { cache: "no-store" });
+    if (resH2.ok) {
+      historyData2 = parseWorkbookBuffer(await resH2.arrayBuffer());
+    }
+  } catch (err) {
+    console.warn("history-1.xlsx fetch failed", err);
+  }
+
+  raw = mergeAndDeduplicate(historyData1, historyData2, currentMonthData);
 
   if (raw.length === 0) {
-    $("sourceText").textContent = "No data loaded. Please verify data.xlsx or history.xlsx in repository.";
+    $("sourceText").textContent = "No data loaded. Please verify data files in repository.";
     return;
   }
 
@@ -635,14 +648,14 @@ async function fetchGitHubCommitTime() {
         const commitDate = new Date(data[0].commit.committer.date).toLocaleString('en-IN', {
           day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true
         });
-        $("sourceText").textContent = `LIVE Orders (data.xlsx + history.xlsx) • ${raw.length.toLocaleString()} items • Last Sync: ${commitDate}`;
+        $("sourceText").textContent = `LIVE Orders (data + history files) • ${raw.length.toLocaleString()} items • Last Sync: ${commitDate}`;
         return;
       }
     }
   } catch (err) {
     console.warn("GitHub commit fetch failed", err);
   }
-  $("sourceText").textContent = `LIVE Orders (data.xlsx + history.xlsx) • ${raw.length.toLocaleString()} total items`;
+  $("sourceText").textContent = `LIVE Orders (data + history files) • ${raw.length.toLocaleString()} total items`;
 }
 
 setInterval(() => {
